@@ -1,0 +1,20 @@
+{
+  "name": "face-blockchain-pipeline",
+  "version": "1.0.0",
+  "description": "Face identification + blockchain verification pipeline",
+  "scripts": {
+    "compile": "hardhat compile",
+    "deploy:local": "hardhat run scripts/deploy.js --network localhost",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia",
+    "verify:local": "hardhat run scripts/verify.js --network localhost",
+    "verify:sepolia": "hardhat run scripts/verify.js --network sepolia",
+    "node": "hardhat node"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "ethers": "^6.11.0"
+  }
+}
