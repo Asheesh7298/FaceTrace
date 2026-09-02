@@ -19,6 +19,8 @@ blockchain/cache/
 # Pipeline outputs
 output/
 .cache/
+cache/
+artifacts/
 
 # Deployment files (contain contract addresses — commit if you want)
 # deployment_localhost.json  ← local only, don't commit

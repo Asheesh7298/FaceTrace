@@ -33,19 +33,33 @@ from rich import print as rprint
 
 load_dotenv()
 
-console = Console()
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+console = Console(force_terminal=True, legacy_windows=False)
 logger  = logging.getLogger("pipeline")
 
 
 def setup_logging(output_dir: str):
+    import io
+    import threading
     log_path = Path(output_dir) / "pipeline.log"
+
+    handlers = [logging.FileHandler(log_path, encoding="utf-8")]
+
+    # Only add stdout handler if we're in the main thread (not the web server's bg thread)
+    if threading.current_thread() is threading.main_thread():
+        stream = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace") if hasattr(sys.stdout, "buffer") else sys.stdout
+        handlers.append(logging.StreamHandler(stream))
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-        handlers=[
-            logging.FileHandler(log_path),
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=handlers,
     )
 
 
@@ -101,7 +115,14 @@ def print_result_table(result: dict):
     console.print(table)
 
 
-def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = "output") -> dict:
+def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = "output", progress_callback=None) -> dict:
+    def emit(event_type, data):
+        if progress_callback:
+            try:
+                progress_callback(event_type, data)
+            except Exception:
+                pass
+
     start_time = time.time()
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     setup_logging(output_dir)
@@ -124,6 +145,7 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
     # STAGE 1 — Face Detection & Encoding
     # ════════════════════════════════════════════════════════════════════════
     print_stage(1, "Face Detection & Multi-Model Encoding")
+    emit("stage", {"stage": 1, "status": "running", "message": "Detecting face and computing embeddings..."})
 
     from face.detect import detect_and_encode
 
@@ -136,9 +158,23 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
 
     if not face_result["success"]:
         console.print(f"[bold red]Stage 1 FAILED: {face_result['error']}[/bold red]")
+        emit("stage", {"stage": 1, "status": "error", "message": face_result["error"]})
         result["elapsed_seconds"] = round(time.time() - start_time, 1)
+        emit("complete", {"success": False, "elapsed": result["elapsed_seconds"], "error": face_result["error"]})
         _save_result(result, output_dir)
         return result
+
+    emit("face", {
+        "face_hash": face_result["face_hash"],
+        "quality": face_result["quality_score"],
+        "pose": face_result.get("pose", {}).get("flag", "unknown"),
+        "pose_yaw": face_result.get("pose", {}).get("yaw", 0),
+        "pose_pitch": face_result.get("pose", {}).get("pitch", 0),
+        "crop_url": "/output/face_crop.jpg",
+        "embeddings": face_summary["embeddings_computed"],
+        "exif": face_result.get("exif", {}),
+    })
+    emit("stage", {"stage": 1, "status": "done", "message": f"Face detected — {len(face_summary['embeddings_computed'])} models"})
 
     console.print(f"[green]Stage 1 complete ✓[/green] — "
                   f"Face crop: {face_result['face_crop_path']} | "
@@ -146,9 +182,10 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
                   f"Quality: {face_result['quality_score']:.1f}")
 
     # ════════════════════════════════════════════════════════════════════════
-    # STAGE 2 — Multi-Engine Reverse Image Search
+    # STAGE 2 — Multi-Engine Reverse Image & Face Search
     # ════════════════════════════════════════════════════════════════════════
-    print_stage(2, "Reverse Image Search (Yandex → Bing → SerpApi)")
+    print_stage(2, "Face & Reverse Image Search (FaceCheck → Yandex → Bing → SerpApi)")
+    emit("stage", {"stage": 2, "status": "running", "message": "Searching web & social networks for matching faces..."})
 
     from search.reverse_search import multi_engine_search
 
@@ -161,11 +198,20 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
 
     if search_result["success"]:
         best = search_result["best_match"]
+        emit("match", {
+            "url": best.get("url", ""),
+            "platform": best.get("platform", "unknown"),
+            "score": best.get("composite_score", 0),
+            "engines": best.get("engines", []),
+            "total_candidates": search_result.get("total_candidates", 0),
+        })
+        emit("stage", {"stage": 2, "status": "done", "message": f"Found {search_result['total_candidates']} candidates — best: {best.get('platform', 'unknown')}"})
         console.print(f"[green]Stage 2 complete ✓[/green] — "
                       f"Found {search_result['total_candidates']} candidates | "
                       f"Best: {best['url'][:60]}... | "
                       f"Score: {best['composite_score']}")
     else:
+        emit("stage", {"stage": 2, "status": "done", "message": "No web matches found — anchoring proof-of-scan"})
         console.print("[yellow]Stage 2: No social match found — "
                       "will anchor proof-of-scan record[/yellow]")
 
@@ -173,6 +219,7 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
     # STAGE 3 — Blockchain Anchoring & Verification
     # ════════════════════════════════════════════════════════════════════════
     print_stage(3, f"Blockchain Anchoring ({network})")
+    emit("stage", {"stage": 3, "status": "running", "message": f"Anchoring to {network}..."})
 
     from blockchain.anchor import BlockchainAnchor, build_payload, sha256_of_str
     import json as _json
@@ -180,8 +227,6 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
     best = search_result.get("best_match") or {}
     match_found = search_result.get("success", False)
 
-    # Build content hash: hash the source URL as the content fingerprint
-    # (actual image download skipped for auth-walled social media URLs)
     content_hash = (
         sha256_of_str(best["url"]) if match_found else "none"
     )
@@ -218,18 +263,32 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
             "payload_hash":    payload_hash,
         }
 
+        emit("blockchain", {
+            "tx_hash": anchor_result.get("tx_hash", ""),
+            "block_number": anchor_result.get("block_number", 0),
+            "gas_used": anchor_result.get("gas_used", 0),
+            "contract_address": anchor_result.get("contract_address", ""),
+            "payload_hash": payload_hash,
+            "verified": verify_result["verified"],
+            "network": network,
+            "etherscan_url": anchor_result.get("etherscan_url"),
+        })
+
         if verify_result["verified"]:
+            emit("stage", {"stage": 3, "status": "done", "message": f"Verified on block {anchor_result['block_number']}"})
             console.print(f"[green]Stage 3 complete ✓[/green] — "
                           f"TX: {anchor_result['tx_hash']} | "
                           f"Block: {anchor_result['block_number']} | "
                           f"Verified: ✅")
         else:
+            emit("stage", {"stage": 3, "status": "error", "message": "Anchored but verification failed"})
             console.print("[red]Stage 3: Anchoring succeeded but verification failed[/red]")
 
     except Exception as e:
         logger.error(f"Blockchain stage failed: {e}")
         console.print(f"[red]Stage 3 FAILED: {e}[/red]")
         result["blockchain"]["error"] = str(e)
+        emit("stage", {"stage": 3, "status": "error", "message": str(e)})
 
     # ════════════════════════════════════════════════════════════════════════
     # Final summary
@@ -255,6 +314,7 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
         ))
 
     _save_result(result, output_dir)
+    emit("complete", {"success": result["pipeline_success"], "elapsed": result["elapsed_seconds"]})
     return result
 
 

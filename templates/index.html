@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="FaceTrace — Face Identification & Blockchain Verification Pipeline">
+    <title>FaceTrace — Face ID &amp; Blockchain Verification</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg-primary: #06080f;
+            --bg-secondary: #0c1019;
+            --bg-card: rgba(14, 20, 33, 0.7);
+            --bg-card-hover: rgba(18, 26, 42, 0.85);
+            --border: rgba(255, 255, 255, 0.06);
+            --border-glow: rgba(6, 214, 160, 0.15);
+            --text-primary: #e8ecf4;
+            --text-secondary: #8892a4;
+            --text-muted: #505868;
+            --accent-cyan: #06d6a0;
+            --accent-blue: #4cc9f0;
+            --accent-amber: #f77f00;
+            --accent-rose: #ef476f;
+            --accent-purple: #7b61ff;
+            --gradient-accent: linear-gradient(135deg, #06d6a0 0%, #4cc9f0 100%);
+            --gradient-bg: radial-gradient(ellipse at 50% 0%, rgba(6, 214, 160, 0.05) 0%, transparent 60%);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+            --font: 'Inter', -apple-system, system-ui, sans-serif;
+            --mono: 'JetBrains Mono', 'Consolas', monospace;
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: var(--font);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background: var(--gradient-bg);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 1120px;
+            margin: 0 auto;
+            padding: 0 24px;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* ═══ HEADER ═══ */
+        header {
+            padding: 24px 0 16px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+        .header-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .logo-icon {
+            width: 36px;
+            height: 36px;
+            background: var(--gradient-accent);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            position: relative;
+            overflow: hidden;
+        }
+        .logo-icon::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.15) 50%, transparent 70%);
+            animation: shimmer 3s infinite;
+        }
+        @keyframes shimmer {
+            0% { transform: translateX(-100%) rotate(45deg); }
+            100% { transform: translateX(100%) rotate(45deg); }
+        }
+        .logo h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            background: var(--gradient-accent);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .logo h1 span {
+            font-weight: 400;
+            opacity: 0.6;
+            -webkit-text-fill-color: var(--text-secondary);
+        }
+        .header-badges {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+        .badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--accent-cyan);
+            animation: pulse-dot 2s infinite;
+        }
+        .badge .dot.amber { background: var(--accent-amber); }
+        .badge .dot.off { background: var(--text-muted); animation: none; }
+        @keyframes pulse-dot {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* ═══ CARDS ═══ */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 28px;
+            backdrop-filter: blur(16px);
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+        .card:hover {
+            border-color: var(--border-glow);
+            box-shadow: 0 0 40px rgba(6, 214, 160, 0.03);
+        }
+        .card-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .card-header .icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+        .card-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .card-header h2 small {
+            font-weight: 400;
+            color: var(--text-secondary);
+            margin-left: 6px;
+        }
+
+        /* ═══ UPLOAD SECTION ═══ */
+        #upload-section { margin-bottom: 32px; }
+
+        .upload-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+        }
+        @media (max-width: 768px) {
+            .upload-grid { grid-template-columns: 1fr; }
+        }
+
+        .dropzone {
+            position: relative;
+            border: 2px dashed rgba(255,255,255,0.08);
+            border-radius: var(--radius);
+            padding: 48px 24px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 220px;
+        }
+        .dropzone:hover, .dropzone.dragover {
+            border-color: var(--accent-cyan);
+            background: rgba(6, 214, 160, 0.03);
+        }
+        .dropzone.has-preview {
+            padding: 16px;
+        }
+        .dropzone .upload-icon {
+            font-size: 36px;
+            margin-bottom: 12px;
+            opacity: 0.5;
+        }
+        .dropzone .upload-text {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+        .dropzone .upload-text strong {
+            color: var(--accent-cyan);
+        }
+        .dropzone input[type="file"] {
+            position: absolute;
+            inset: 0;
+            opacity: 0;
+            cursor: pointer;
+        }
+        .preview-img {
+            max-width: 100%;
+            max-height: 200px;
+            border-radius: 8px;
+            object-fit: contain;
+            display: none;
+        }
+        .dropzone.has-preview .upload-icon,
+        .dropzone.has-preview .upload-text { display: none; }
+        .dropzone.has-preview .preview-img { display: block; }
+        .preview-name {
+            margin-top: 8px;
+            font-size: 12px;
+            color: var(--text-secondary);
+            display: none;
+        }
+        .dropzone.has-preview .preview-name { display: block; }
+
+        .upload-options { display: flex; flex-direction: column; gap: 16px; }
+
+        .samples-label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+        .samples-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .sample-chip {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+        .sample-chip:hover {
+            border-color: var(--accent-blue);
+            background: rgba(76, 201, 240, 0.05);
+            color: var(--text-primary);
+        }
+        .sample-chip.selected {
+            border-color: var(--accent-cyan);
+            background: rgba(6, 214, 160, 0.08);
+            color: var(--accent-cyan);
+        }
+        .sample-chip img {
+            width: 28px;
+            height: 28px;
+            border-radius: 6px;
+            object-fit: cover;
+        }
+
+        .network-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .network-toggle label {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+        .pill-group {
+            display: flex;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .pill {
+            padding: 6px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: var(--font);
+        }
+        .pill.active {
+            background: rgba(6, 214, 160, 0.12);
+            color: var(--accent-cyan);
+        }
+
+        .btn-scan {
+            width: 100%;
+            padding: 14px 24px;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-size: 15px;
+            font-weight: 600;
+            font-family: var(--font);
+            cursor: pointer;
+            transition: all 0.3s;
+            background: rgba(255,255,255,0.05);
+            color: var(--text-muted);
+            position: relative;
+            overflow: hidden;
+            margin-top: auto;
+        }
+        .btn-scan.ready {
+            background: var(--gradient-accent);
+            color: #06080f;
+            box-shadow: 0 0 30px rgba(6, 214, 160, 0.15);
+        }
+        .btn-scan.ready:hover {
+            box-shadow: 0 0 50px rgba(6, 214, 160, 0.25);
+            transform: translateY(-1px);
+        }
+        .btn-scan:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+
+        /* ═══ PROGRESS SECTION ═══ */
+        #progress-section {
+            display: none;
+            margin-bottom: 32px;
+            animation: fadeIn 0.4s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .stages-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        @media (max-width: 640px) {
+            .stages-row { grid-template-columns: 1fr; }
+        }
+        .stage-card {
+            padding: 18px;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            transition: all 0.4s;
+        }
+        .stage-card.active {
+            border-color: var(--accent-blue);
+            background: rgba(76, 201, 240, 0.04);
+            box-shadow: 0 0 30px rgba(76, 201, 240, 0.06);
+        }
+        .stage-card.done {
+            border-color: rgba(6, 214, 160, 0.2);
+            background: rgba(6, 214, 160, 0.03);
+        }
+        .stage-card.error {
+            border-color: rgba(239, 71, 111, 0.2);
+            background: rgba(239, 71, 111, 0.03);
+        }
+        .stage-head {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .stage-num {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            background: rgba(255,255,255,0.05);
+            color: var(--text-muted);
+            transition: all 0.3s;
+            flex-shrink: 0;
+        }
+        .stage-card.active .stage-num {
+            background: rgba(76, 201, 240, 0.15);
+            color: var(--accent-blue);
+        }
+        .stage-card.done .stage-num {
+            background: rgba(6, 214, 160, 0.15);
+            color: var(--accent-cyan);
+        }
+        .stage-card.error .stage-num {
+            background: rgba(239, 71, 111, 0.15);
+            color: var(--accent-rose);
+        }
+        .stage-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .stage-card.active .stage-name { color: var(--text-primary); }
+        .stage-card.done .stage-name { color: var(--accent-cyan); }
+        .stage-msg {
+            font-size: 12px;
+            color: var(--text-muted);
+            min-height: 18px;
+        }
+        .stage-card.active .stage-msg { color: var(--text-secondary); }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(76, 201, 240, 0.2);
+            border-top: 2px solid var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: none;
+        }
+        .stage-card.active .spinner { display: block; }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .log-area {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            max-height: 180px;
+            overflow-y: auto;
+            font-family: var(--mono);
+            font-size: 12px;
+            line-height: 1.8;
+            color: var(--text-muted);
+        }
+        .log-area::-webkit-scrollbar { width: 4px; }
+        .log-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        .log-line { opacity: 0; animation: logIn 0.3s forwards; }
+        @keyframes logIn {
+            from { opacity: 0; transform: translateX(-6px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        .log-line .time { color: var(--text-muted); }
+        .log-line .msg { color: var(--text-secondary); }
+        .log-line.success .msg { color: var(--accent-cyan); }
+        .log-line.info .msg { color: var(--accent-blue); }
+        .log-line.warning .msg { color: var(--accent-amber); }
+        .log-line.error .msg { color: var(--accent-rose); }
+
+        /* ═══ RESULTS SECTION ═══ */
+        #results-section {
+            display: none;
+            margin-bottom: 32px;
+            animation: fadeIn 0.5s ease;
+        }
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 20px;
+        }
+        @media (max-width: 900px) {
+            .results-grid { grid-template-columns: 1fr; }
+        }
+
+        .result-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            backdrop-filter: blur(16px);
+            transition: all 0.3s;
+        }
+        .result-card:hover {
+            border-color: var(--border-glow);
+        }
+        .result-card h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .result-card h3 .emoji { font-size: 16px; }
+
+        .face-crop-wrap {
+            text-align: center;
+            margin-bottom: 16px;
+        }
+        .face-crop-img {
+            width: 100%;
+            max-width: 180px;
+            border-radius: 10px;
+            border: 2px solid var(--border);
+            transition: border-color 0.3s;
+        }
+        .face-crop-img:hover {
+            border-color: var(--accent-cyan);
+        }
+
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.03);
+            font-size: 13px;
+        }
+        .detail-row:last-child { border-bottom: none; }
+        .detail-label { color: var(--text-muted); font-weight: 500; }
+        .detail-value { color: var(--text-primary); font-weight: 500; text-align: right; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .hash-value {
+            font-family: var(--mono);
+            font-size: 11px;
+            color: var(--accent-blue);
+            cursor: pointer;
+            padding: 3px 8px;
+            background: rgba(76, 201, 240, 0.06);
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .hash-value:hover { background: rgba(76, 201, 240, 0.12); }
+
+        .quality-bar-wrap {
+            width: 100%;
+            height: 6px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .quality-bar {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 1s ease;
+            background: var(--gradient-accent);
+        }
+
+        .model-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .model-chip {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 500;
+            background: rgba(6, 214, 160, 0.08);
+            color: var(--accent-cyan);
+            border: 1px solid rgba(6, 214, 160, 0.12);
+        }
+
+        .match-card-inner {
+            padding: 14px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+        .match-url {
+            color: var(--accent-blue);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            word-break: break-all;
+        }
+        .match-url:hover { text-decoration: underline; }
+        .match-platform {
+            display: inline-flex;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: rgba(123, 97, 255, 0.1);
+            color: var(--accent-purple);
+            margin-top: 6px;
+        }
+
+        .score-ring {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 10px;
+            position: relative;
+        }
+        .score-ring svg { transform: rotate(-90deg); }
+        .score-ring circle {
+            fill: none;
+            stroke-width: 4;
+        }
+        .score-ring .bg { stroke: rgba(255,255,255,0.05); }
+        .score-ring .fg { stroke: var(--accent-cyan); stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
+        .score-ring .value {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent-cyan);
+        }
+
+        .no-match {
+            text-align: center;
+            padding: 24px 16px;
+            color: var(--text-muted);
+        }
+        .no-match .emoji { font-size: 28px; margin-bottom: 8px; }
+        .no-match p { font-size: 13px; }
+        .no-match .subtle { font-size: 12px; margin-top: 6px; color: var(--text-muted); opacity: 0.7; }
+
+        .verified-badge {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            font-weight: 700;
+            margin-bottom: 16px;
+        }
+        .verified-badge.success {
+            background: rgba(6, 214, 160, 0.08);
+            border: 1px solid rgba(6, 214, 160, 0.15);
+            color: var(--accent-cyan);
+        }
+        .verified-badge.fail {
+            background: rgba(239, 71, 111, 0.08);
+            border: 1px solid rgba(239, 71, 111, 0.15);
+            color: var(--accent-rose);
+        }
+        .verified-badge .shield { font-size: 22px; }
+
+        .immutable-note {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-align: center;
+            margin-top: 14px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+            opacity: 0.7;
+        }
+
+        /* ═══ HISTORY SECTION ═══ */
+        #history-section { margin-bottom: 48px; }
+        .history-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            padding: 4px 0;
+        }
+        .history-header h2 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .history-toggle {
+            font-size: 12px;
+            color: var(--text-muted);
+            transition: transform 0.3s;
+        }
+        .history-list {
+            margin-top: 16px;
+            display: none;
+        }
+        .history-list.open { display: block; }
+
+        .history-row {
+            display: grid;
+            grid-template-columns: 1fr 100px 90px 70px;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            margin-bottom: 6px;
+            align-items: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 13px;
+        }
+        .history-row:hover {
+            background: rgba(255,255,255,0.04);
+            border-color: var(--border-glow);
+        }
+        .history-file { color: var(--text-primary); font-weight: 500; }
+        .history-platform { color: var(--accent-purple); }
+        .history-network { color: var(--text-muted); }
+        .history-status { text-align: right; }
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 4px;
+        }
+        .status-dot.ok { background: var(--accent-cyan); }
+        .status-dot.partial { background: var(--accent-amber); }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        /* ═══ TOAST ═══ */
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            backdrop-filter: blur(16px);
+            z-index: 1000;
+            animation: toastIn 0.3s ease, toastOut 0.3s ease 2.2s forwards;
+        }
+        @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="header-inner">
+                <div class="logo">
+                    <div class="logo-icon">🔍</div>
+                    <h1>FaceTrace <span>v1.0</span></h1>
+                </div>
+                <div class="header-badges">
+                    <div class="badge" id="network-badge">
+                        <span class="dot" id="network-dot"></span>
+                        <span id="network-name">Localhost</span>
+                    </div>
+                    <div class="badge" id="contract-badge" title="Click to copy" style="cursor:pointer; display:none;">
+                        📄 <span id="contract-addr">—</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- UPLOAD SECTION -->
+        <section id="upload-section" class="card">
+            <div class="card-header">
+                <div class="icon" style="background: rgba(76, 201, 240, 0.1); color: var(--accent-blue);">📸</div>
+                <h2>New Scan <small>Upload or choose a sample image</small></h2>
+            </div>
+            <div class="upload-grid">
+                <div class="dropzone" id="dropzone">
+                    <input type="file" id="file-input" accept="image/*">
+                    <div class="upload-icon">⬆️</div>
+                    <div class="upload-text">
+                        Drag & drop an image here<br>
+                        or <strong>click to browse</strong>
+                    </div>
+                    <img class="preview-img" id="preview-img" alt="Preview">
+                    <div class="preview-name" id="preview-name"></div>
+                </div>
+                <div class="upload-options">
+                    <div>
+                        <div class="samples-label">Or use a sample</div>
+                        <div class="samples-grid" id="samples-grid">
+                            <!-- Filled by JS -->
+                        </div>
+                    </div>
+                    <div class="network-toggle">
+                        <label>Network</label>
+                        <div class="pill-group">
+                            <button class="pill active" data-network="localhost">Localhost</button>
+                            <button class="pill" data-network="sepolia">Sepolia</button>
+                        </div>
+                    </div>
+                    <button class="btn-scan" id="btn-scan" disabled>
+                        Select an image to begin
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- PROGRESS SECTION -->
+        <section id="progress-section" class="card">
+            <div class="card-header">
+                <div class="icon" style="background: rgba(76, 201, 240, 0.1); color: var(--accent-blue);">⚡</div>
+                <h2>Pipeline Progress <small id="elapsed-time"></small></h2>
+            </div>
+            <div class="stages-row">
+                <div class="stage-card" id="stage-1">
+                    <div class="stage-head">
+                        <div class="stage-num">1</div>
+                        <div class="stage-name">Face Detection</div>
+                        <div class="spinner"></div>
+                    </div>
+                    <div class="stage-msg" id="stage-1-msg">Waiting...</div>
+                </div>
+                <div class="stage-card" id="stage-2">
+                    <div class="stage-head">
+                        <div class="stage-num">2</div>
+                        <div class="stage-name">Web Search</div>
+                        <div class="spinner"></div>
+                    </div>
+                    <div class="stage-msg" id="stage-2-msg">Waiting...</div>
+                </div>
+                <div class="stage-card" id="stage-3">
+                    <div class="stage-head">
+                        <div class="stage-num">3</div>
+                        <div class="stage-name">Blockchain</div>
+                        <div class="spinner"></div>
+                    </div>
+                    <div class="stage-msg" id="stage-3-msg">Waiting...</div>
+                </div>
+            </div>
+            <div class="log-area" id="log-area"></div>
+        </section>
+
+        <!-- RESULTS SECTION -->
+        <section id="results-section">
+            <div class="results-grid">
+                <!-- Face Intelligence -->
+                <div class="result-card" id="face-card">
+                    <h3><span class="emoji">🧠</span> Face Intelligence</h3>
+                    <div class="face-crop-wrap">
+                        <img class="face-crop-img" id="face-crop-img" alt="Face Crop" src="">
+                    </div>
+                    <div id="face-details">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Search Results -->
+                <div class="result-card" id="search-card">
+                    <h3><span class="emoji">🌐</span> Search Results</h3>
+                    <div id="search-details">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+
+                <!-- Blockchain -->
+                <div class="result-card" id="blockchain-card">
+                    <h3><span class="emoji">⛓️</span> Blockchain Verification</h3>
+                    <div id="blockchain-details">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- HISTORY SECTION -->
+        <section id="history-section" class="card">
+            <div class="history-header" id="history-toggle">
+                <h2>📋 Scan History</h2>
+                <span class="history-toggle" id="history-arrow">▼</span>
+            </div>
+            <div class="history-list" id="history-list">
+                <!-- Filled by JS -->
+            </div>
+        </section>
+    </div>
+
+    <script>
+    // ═══ STATE ═══
+    let selectedFile = null;
+    let selectedSample = null;
+    let network = 'localhost';
+    let scanStartTime = null;
+    let elapsedTimer = null;
+    let faceData = null;
+    let matchData = null;
+    let blockchainData = null;
+
+    // ═══ DOM ═══
+    const $ = id => document.getElementById(id);
+    const dropzone = $('dropzone');
+    const fileInput = $('file-input');
+    const previewImg = $('preview-img');
+    const previewName = $('preview-name');
+    const btnScan = $('btn-scan');
+    const samplesGrid = $('samples-grid');
+    const progressSection = $('progress-section');
+    const resultsSection = $('results-section');
+    const logArea = $('log-area');
+    const elapsedEl = $('elapsed-time');
+
+    // ═══ INIT ═══
+    document.addEventListener('DOMContentLoaded', () => {
+        loadSamples();
+        loadHistory();
+        setupDragDrop();
+        setupNetworkToggle();
+    });
+
+    // ═══ SAMPLES ═══
+    async function loadSamples() {
+        try {
+            const res = await fetch('/api/samples');
+            const samples = await res.json();
+            samplesGrid.innerHTML = '';
+            if (samples.length === 0) {
+                samplesGrid.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">No samples found in /samples</span>';
+                return;
+            }
+            samples.forEach(s => {
+                const chip = document.createElement('div');
+                chip.className = 'sample-chip';
+                chip.innerHTML = `<img src="${s.path}" alt="${s.name}" onerror="this.style.display='none'"> ${s.name}`;
+                chip.addEventListener('click', () => selectSample(s.name, chip));
+                samplesGrid.appendChild(chip);
+            });
+        } catch (e) {
+            samplesGrid.innerHTML = '<span style="font-size:12px;color:var(--accent-rose)">Failed to load samples</span>';
+        }
+    }
+
+    function selectSample(name, chip) {
+        selectedFile = null;
+        selectedSample = name;
+
+        // Reset file preview
+        dropzone.classList.remove('has-preview');
+        previewImg.src = '';
+
+        // Show sample preview in dropzone
+        previewImg.src = `/samples/${name}`;
+        previewImg.style.display = 'block';
+        previewName.textContent = name;
+        previewName.style.display = 'block';
+        dropzone.querySelector('.upload-icon').style.display = 'none';
+        dropzone.querySelector('.upload-text').style.display = 'none';
+        dropzone.classList.add('has-preview');
+
+        // Highlight chip
+        document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('selected'));
+        chip.classList.add('selected');
+
+        updateScanButton();
+    }
+
+    // ═══ DRAG & DROP ═══
+    function setupDragDrop() {
+        dropzone.addEventListener('dragover', e => {
+            e.preventDefault();
+            dropzone.classList.add('dragover');
+        });
+        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+        dropzone.addEventListener('drop', e => {
+            e.preventDefault();
+            dropzone.classList.remove('dragover');
+            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+        });
+        fileInput.addEventListener('change', e => {
+            if (e.target.files.length) handleFile(e.target.files[0]);
+        });
+    }
+
+    function handleFile(file) {
+        if (!file.type.startsWith('image/')) {
+            toast('Please select an image file');
+            return;
+        }
+        selectedFile = file;
+        selectedSample = null;
+
+        // Show preview
+        const reader = new FileReader();
+        reader.onload = e => {
+            previewImg.src = e.target.result;
+            previewName.textContent = file.name;
+            dropzone.classList.add('has-preview');
+        };
+        reader.readAsDataURL(file);
+
+        // Clear sample selection
+        document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('selected'));
+        updateScanButton();
+    }
+
+    // ═══ NETWORK ═══
+    function setupNetworkToggle() {
+        document.querySelectorAll('.pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                network = pill.dataset.network;
+                $('network-name').textContent = network === 'localhost' ? 'Localhost' : 'Sepolia';
+                $('network-dot').className = network === 'localhost' ? 'dot' : 'dot amber';
+            });
+        });
+    }
+
+    function updateScanButton() {
+        const ready = !!(selectedFile || selectedSample);
+        btnScan.disabled = !ready;
+        btnScan.className = 'btn-scan' + (ready ? ' ready' : '');
+        btnScan.textContent = ready ? '🔍  Start Scan' : 'Select an image to begin';
+        btnScan.onclick = ready ? startScan : null;
+    }
+
+    // ═══ SCAN ═══
+    async function startScan() {
+        btnScan.disabled = true;
+        btnScan.textContent = '⏳  Starting...';
+
+        // Reset state
+        faceData = null;
+        matchData = null;
+        blockchainData = null;
+        logArea.innerHTML = '';
+        resultsSection.style.display = 'none';
+
+        // Reset stages
+        [1, 2, 3].forEach(i => {
+            $(`stage-${i}`).className = 'stage-card';
+            $(`stage-${i}-msg`).textContent = 'Waiting...';
+        });
+
+        // Show progress
+        progressSection.style.display = 'block';
+        progressSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Start elapsed timer
+        scanStartTime = Date.now();
+        clearInterval(elapsedTimer);
+        elapsedTimer = setInterval(() => {
+            const sec = ((Date.now() - scanStartTime) / 1000).toFixed(1);
+            elapsedEl.textContent = `${sec}s`;
+        }, 100);
+
+        // Build form data
+        const formData = new FormData();
+        if (selectedFile) {
+            formData.append('file', selectedFile);
+        } else if (selectedSample) {
+            formData.append('sample', selectedSample);
+        }
+        formData.append('network', network);
+
+        try {
+            const res = await fetch('/api/scan', { method: 'POST', body: formData });
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || 'Scan failed');
+            }
+            const { scan_id } = await res.json();
+            addLog('info', `Scan ${scan_id} started`);
+            connectSSE(scan_id);
+        } catch (e) {
+            addLog('error', `Error: ${e.message}`);
+            clearInterval(elapsedTimer);
+            btnScan.disabled = false;
+            updateScanButton();
+        }
+    }
+
+    // ═══ SSE ═══
+    function connectSSE(scanId) {
+        const source = new EventSource(`/api/stream/${scanId}`);
+
+        source.addEventListener('stage', e => {
+            const d = JSON.parse(e.data);
+            const el = $(`stage-${d.stage}`);
+            const msgEl = $(`stage-${d.stage}-msg`);
+            if (!el) return;
+
+            if (d.status === 'running') {
+                el.className = 'stage-card active';
+                addLog('info', d.message);
+            } else if (d.status === 'done') {
+                el.className = 'stage-card done';
+                el.querySelector('.stage-num').textContent = '✓';
+                addLog('success', d.message);
+            } else if (d.status === 'error') {
+                el.className = 'stage-card error';
+                el.querySelector('.stage-num').textContent = '✗';
+                addLog('error', d.message);
+            }
+            msgEl.textContent = d.message;
+        });
+
+        source.addEventListener('face', e => {
+            faceData = JSON.parse(e.data);
+            addLog('success', `Face hash: ${faceData.face_hash.substring(0, 24)}...`);
+        });
+
+        source.addEventListener('match', e => {
+            matchData = JSON.parse(e.data);
+            addLog('success', `Match found: ${matchData.platform} (score: ${matchData.score})`);
+        });
+
+        source.addEventListener('blockchain', e => {
+            blockchainData = JSON.parse(e.data);
+            addLog('success', `TX: ${blockchainData.tx_hash.substring(0, 18)}... | Block: ${blockchainData.block_number}`);
+        });
+
+        source.addEventListener('complete', e => {
+            const d = JSON.parse(e.data);
+            clearInterval(elapsedTimer);
+            const sec = d.elapsed || ((Date.now() - scanStartTime) / 1000).toFixed(1);
+            elapsedEl.textContent = `${sec}s`;
+
+            if (d.success) {
+                addLog('success', `Pipeline completed successfully in ${sec}s`);
+            } else {
+                addLog('warning', `Pipeline completed with partial results in ${sec}s`);
+            }
+            source.close();
+        });
+
+        source.addEventListener('result', e => {
+            const result = JSON.parse(e.data);
+            renderResults(result);
+            loadHistory();
+            btnScan.disabled = false;
+            updateScanButton();
+            source.close();
+        });
+
+        source.addEventListener('error', e => {
+            addLog('error', 'Connection to server lost');
+            source.close();
+            clearInterval(elapsedTimer);
+            btnScan.disabled = false;
+            updateScanButton();
+        });
+    }
+
+    // ═══ LOG ═══
+    function addLog(level, msg) {
+        const now = new Date();
+        const time = now.toTimeString().split(' ')[0];
+        const line = document.createElement('div');
+        line.className = `log-line ${level}`;
+        line.innerHTML = `<span class="time">[${time}]</span> <span class="msg">${escHtml(msg)}</span>`;
+        logArea.appendChild(line);
+        logArea.scrollTop = logArea.scrollHeight;
+    }
+
+    // ═══ RENDER RESULTS ═══
+    function renderResults(result) {
+        resultsSection.style.display = 'block';
+
+        // Face card
+        const face = result.face || {};
+        const cropUrl = face.face_crop_path ? `/output/${face.face_crop_path.split(/[\\\/]/).pop()}` : '';
+        $('face-crop-img').src = cropUrl;
+        $('face-crop-img').onerror = function() { this.style.display = 'none'; };
+
+        const quality = face.quality_score || 0;
+        const pose = face.pose || {};
+        const exif = face.exif || {};
+        const models = face.embeddings_computed || [];
+        const faceHash = face.face_hash || '—';
+
+        let faceHtml = '';
+        // Quality
+        faceHtml += `
+            <div class="detail-row">
+                <span class="detail-label">Quality</span>
+                <span class="detail-value">${quality.toFixed ? quality.toFixed(1) : quality}/100</span>
+            </div>
+            <div style="margin-bottom:10px;">
+                <div class="quality-bar-wrap"><div class="quality-bar" style="width:${quality}%"></div></div>
+            </div>`;
+        // Pose
+        faceHtml += `
+            <div class="detail-row">
+                <span class="detail-label">Pose</span>
+                <span class="detail-value">${pose.flag || 'unknown'} (yaw: ${pose.yaw || 0}, pitch: ${pose.pitch || 0})</span>
+            </div>`;
+        // Hash
+        faceHtml += `
+            <div class="detail-row">
+                <span class="detail-label">Face Hash</span>
+                <span class="hash-value" onclick="copyText('${faceHash}')" title="Click to copy">${truncHash(faceHash)}</span>
+            </div>`;
+        // EXIF
+        if (exif.camera_model) {
+            faceHtml += `<div class="detail-row"><span class="detail-label">Camera</span><span class="detail-value">${exif.camera_model}</span></div>`;
+        }
+        if (exif.was_edited) {
+            faceHtml += `<div class="detail-row"><span class="detail-label">Edited</span><span class="detail-value" style="color:var(--accent-amber)">⚠ Yes</span></div>`;
+        }
+        // Models
+        faceHtml += `<div style="margin-top:10px;"><div class="detail-label" style="margin-bottom:6px;">Models</div><div class="model-chips">${models.map(m => `<span class="model-chip">✓ ${m}</span>`).join('')}</div></div>`;
+
+        $('face-details').innerHTML = faceHtml;
+
+        // Search card
+        const search = result.search_results || {};
+        const best = search.best_match;
+        let searchHtml = '';
+
+        if (best && search.success) {
+            const score = best.composite_score || 0;
+            const circumference = 2 * Math.PI * 25;
+            const offset = circumference - (score * circumference);
+
+            searchHtml += `
+                <div class="score-ring">
+                    <svg width="60" height="60" viewBox="0 0 60 60">
+                        <circle class="bg" cx="30" cy="30" r="25"/>
+                        <circle class="fg" cx="30" cy="30" r="25"
+                            stroke-dasharray="${circumference}"
+                            stroke-dashoffset="${offset}"/>
+                    </svg>
+                    <div class="value">${(score * 100).toFixed(0)}%</div>
+                </div>
+                <div class="match-card-inner">
+                    <a href="${best.url}" target="_blank" class="match-url">${best.url}</a>
+                    <div><span class="match-platform">${best.platform || 'web'}</span></div>
+                </div>`;
+
+            // Engines
+            const engines = search.engines_queried || [];
+            const enginesWithResults = search.engines_with_results || [];
+            searchHtml += `<div class="detail-row"><span class="detail-label">Engines</span><span class="detail-value">${engines.map(e =>
+                `<span style="color:${enginesWithResults.includes(e) ? 'var(--accent-cyan)' : 'var(--text-muted)'}">${e}</span>`
+            ).join(', ')}</span></div>`;
+
+            searchHtml += `<div class="detail-row"><span class="detail-label">Candidates</span><span class="detail-value">${search.total_candidates || 0}</span></div>`;
+
+            // All candidates
+            const candidates = search.all_candidates || [];
+            if (candidates.length > 1) {
+                searchHtml += `<div style="margin-top:12px;"><details><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">All ${candidates.length} candidates</summary><div style="margin-top:8px;">`;
+                candidates.forEach(c => {
+                    searchHtml += `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;">
+                        <a href="${c.url}" target="_blank" style="color:var(--accent-blue);word-break:break-all;">${c.url.substring(0, 60)}...</a>
+                        <span style="color:var(--text-muted);margin-left:6px;">${c.platform || ''} · ${(c.composite_score || 0).toFixed(2)}</span>
+                    </div>`;
+                });
+                searchHtml += `</div></details></div>`;
+            }
+        } else {
+            searchHtml = `
+                <div class="no-match">
+                    <div class="emoji">🔒</div>
+                    <p>No public web presence found</p>
+                    <p class="subtle">Proof-of-scan recorded on blockchain</p>
+                </div>`;
+        }
+        $('search-details').innerHTML = searchHtml;
+
+        // Blockchain card
+        const bc = result.blockchain || {};
+        const verified = bc.verified || false;
+        let bcHtml = '';
+
+        bcHtml += `<div class="verified-badge ${verified ? 'success' : 'fail'}">
+            <span class="shield">${verified ? '🛡️' : '⚠️'}</span>
+            ${verified ? 'VERIFIED ON-CHAIN' : 'NOT VERIFIED'}
+        </div>`;
+
+        if (bc.payload_hash) {
+            bcHtml += `<div class="detail-row"><span class="detail-label">Payload Hash</span><span class="hash-value" onclick="copyText('${bc.payload_hash}')" title="Click to copy">${truncHash(bc.payload_hash)}</span></div>`;
+        }
+        if (bc.tx_hash) {
+            bcHtml += `<div class="detail-row"><span class="detail-label">TX Hash</span><span class="hash-value" onclick="copyText('${bc.tx_hash}')" title="Click to copy">${truncHash(bc.tx_hash)}</span></div>`;
+        }
+        if (bc.block_number) {
+            bcHtml += `<div class="detail-row"><span class="detail-label">Block</span><span class="detail-value">#${bc.block_number}</span></div>`;
+        }
+        if (bc.gas_used) {
+            bcHtml += `<div class="detail-row"><span class="detail-label">Gas Used</span><span class="detail-value">${bc.gas_used.toLocaleString ? bc.gas_used.toLocaleString() : bc.gas_used}</span></div>`;
+        }
+        if (bc.contract_address) {
+            bcHtml += `<div class="detail-row"><span class="detail-label">Contract</span><span class="hash-value" onclick="copyText('${bc.contract_address}')" title="Click to copy">${truncHash(bc.contract_address)}</span></div>`;
+            $('contract-badge').style.display = 'inline-flex';
+            $('contract-addr').textContent = truncHash(bc.contract_address);
+        }
+
+        const net = result.network || 'localhost';
+        bcHtml += `<div class="detail-row"><span class="detail-label">Network</span><span class="detail-value">${net}</span></div>`;
+
+        bcHtml += `<div class="immutable-note">This record is permanently stored on Ethereum and cannot be altered.</div>`;
+
+        $('blockchain-details').innerHTML = bcHtml;
+
+        // Scroll to results
+        setTimeout(() => {
+            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 300);
+    }
+
+    // ═══ HISTORY ═══
+    async function loadHistory() {
+        try {
+            const res = await fetch('/api/history');
+            const history = await res.json();
+            const list = $('history-list');
+
+            if (history.length === 0) {
+                list.innerHTML = '<div class="empty-state">No scans yet. Run your first scan above!</div>';
+                return;
+            }
+
+            list.innerHTML = history.map(h => `
+                <div class="history-row" onclick="loadHistoryResult('${h.filename}')">
+                    <div class="history-file">${h.input_image}</div>
+                    <div class="history-platform">${h.platform || '—'}</div>
+                    <div class="history-network">${h.network}</div>
+                    <div class="history-status">
+                        <span class="status-dot ${h.success ? 'ok' : 'partial'}"></span>
+                        ${h.success ? 'Verified' : 'Partial'}
+                    </div>
+                </div>
+            `).join('');
+        } catch (e) {
+            $('history-list').innerHTML = '<div class="empty-state">Failed to load history</div>';
+        }
+    }
+
+    async function loadHistoryResult(filename) {
+        try {
+            const res = await fetch(`/api/result/${filename}`);
+            const result = await res.json();
+            renderResults(result);
+        } catch (e) {
+            toast('Failed to load result');
+        }
+    }
+
+    $('history-toggle').addEventListener('click', () => {
+        const list = $('history-list');
+        const arrow = $('history-arrow');
+        list.classList.toggle('open');
+        arrow.textContent = list.classList.contains('open') ? '▲' : '▼';
+    });
+
+    // ═══ HELPERS ═══
+    function truncHash(hash) {
+        if (!hash || hash.length < 16) return hash || '—';
+        return hash.substring(0, 10) + '...' + hash.substring(hash.length - 6);
+    }
+
+    function escHtml(str) {
+        const d = document.createElement('div');
+        d.textContent = str;
+        return d.innerHTML;
+    }
+
+    function copyText(text) {
+        navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'));
+    }
+
+    function toast(msg) {
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.textContent = msg;
+        document.body.appendChild(t);
+        setTimeout(() => t.remove(), 2600);
+    }
+    </script>
+</body>
+</html>
