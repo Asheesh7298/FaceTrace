@@ -1,1415 +1,410 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="FaceTrace — Face Identification & Blockchain Verification Pipeline">
-    <title>FaceTrace — Face ID &amp; Blockchain Verification</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="FaceTrace — Face Identification & Blockchain Verification">
+<title>FaceTrace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e14; --bg2:#0e141d; --card:#121b26; --card2:#16212e;
+    --line:rgba(255,255,255,.07); --line2:rgba(255,255,255,.12);
+    --tx:#e8edf4; --tx2:#9aa7b8; --tx3:#5d6b7d;
+    --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --rose:#fb7185; --violet:#a78bfa;
+    --grad:linear-gradient(135deg,#22d3ee,#34d399);
+    --r:14px; --r2:10px;
+    --font:'Inter',system-ui,-apple-system,sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Consolas,monospace;
+  }
+  body{font-family:var(--font);background:var(--bg);color:var(--tx);line-height:1.55;min-height:100vh;
+    background-image:radial-gradient(900px 400px at 50% -8%,rgba(34,211,238,.06),transparent 70%);}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 22px}
+  a{color:inherit}
+  ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
 
-        :root {
-            --bg-primary: #06080f;
-            --bg-secondary: #0c1019;
-            --bg-card: rgba(14, 20, 33, 0.7);
-            --bg-card-hover: rgba(18, 26, 42, 0.85);
-            --border: rgba(255, 255, 255, 0.06);
-            --border-glow: rgba(6, 214, 160, 0.15);
-            --text-primary: #e8ecf4;
-            --text-secondary: #8892a4;
-            --text-muted: #505868;
-            --accent-cyan: #06d6a0;
-            --accent-blue: #4cc9f0;
-            --accent-amber: #f77f00;
-            --accent-rose: #ef476f;
-            --accent-purple: #7b61ff;
-            --gradient-accent: linear-gradient(135deg, #06d6a0 0%, #4cc9f0 100%);
-            --gradient-bg: radial-gradient(ellipse at 50% 0%, rgba(6, 214, 160, 0.05) 0%, transparent 60%);
-            --radius: 12px;
-            --radius-sm: 8px;
-            --shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
-            --font: 'Inter', -apple-system, system-ui, sans-serif;
-            --mono: 'JetBrains Mono', 'Consolas', monospace;
-        }
+  header{padding:20px 0;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;
+    background:rgba(10,14,20,.82);backdrop-filter:blur(12px)}
+  .head{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+  .brand{display:flex;align-items:center;gap:12px}
+  .logo{width:40px;height:40px;border-radius:11px;background:var(--grad);display:grid;place-items:center;font-size:20px;
+    box-shadow:0 6px 22px rgba(34,211,238,.28)}
+  .brand h1{font-size:20px;font-weight:800;letter-spacing:-.4px}
+  .brand p{font-size:12px;color:var(--tx2);margin-top:-2px}
+  .engines{display:flex;gap:7px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--tx2);
+    background:var(--card);border:1px solid var(--line);border-radius:999px;padding:5px 11px}
+  .chip .d{width:6px;height:6px;border-radius:50%;background:var(--tx3)}
+  .chip.on{color:var(--tx)} .chip.on .d{background:var(--green);box-shadow:0 0 8px var(--green)}
 
-        html { scroll-behavior: smooth; }
+  section{margin:26px 0}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:24px}
+  .ctitle{display:flex;align-items:center;gap:10px;font-size:15px;font-weight:700;margin-bottom:18px}
+  .ctitle .ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;font-size:15px;
+    background:rgba(34,211,238,.12)}
+  .ctitle small{font-weight:400;color:var(--tx2);font-size:12.5px}
 
-        body {
-            font-family: var(--font);
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            min-height: 100vh;
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
+  .ugrid{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+  @media(max-width:780px){.ugrid{grid-template-columns:1fr}}
+  .drop{position:relative;border:1.5px dashed var(--line2);border-radius:var(--r2);min-height:230px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;
+    padding:22px;cursor:pointer;transition:.2s}
+  .drop:hover,.drop.over{border-color:var(--cyan);background:rgba(34,211,238,.04)}
+  .drop input{position:absolute;inset:0;opacity:0;cursor:pointer}
+  .drop .up{font-size:34px;opacity:.5;margin-bottom:8px}
+  .drop .t{font-size:13.5px;color:var(--tx2)} .drop .t b{color:var(--cyan)}
+  .drop img{max-width:100%;max-height:190px;border-radius:9px;display:none;object-fit:contain}
+  .drop .nm{font-size:12px;color:var(--tx2);margin-top:8px;display:none;word-break:break-all}
+  .drop.has .up,.drop.has .t{display:none}.drop.has img,.drop.has .nm{display:block}
+  .opts{display:flex;flex-direction:column;gap:16px}
+  .lbl{font-size:12.5px;font-weight:600;color:var(--tx2);margin-bottom:8px}
+  .samples{display:flex;flex-wrap:wrap;gap:8px}
+  .samp{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--tx2);cursor:pointer;
+    background:var(--card2);border:1px solid var(--line);border-radius:9px;padding:6px 10px;transition:.15s}
+  .samp:hover{border-color:var(--line2);color:var(--tx)}
+  .samp.sel{border-color:var(--cyan);color:var(--cyan);background:rgba(34,211,238,.08)}
+  .samp img{width:26px;height:26px;border-radius:6px;object-fit:cover}
+  .row{display:flex;align-items:center;gap:10px}
+  .pillgrp{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .pill{border:0;background:transparent;color:var(--tx2);font-family:var(--font);font-size:12.5px;font-weight:600;
+    padding:7px 15px;cursor:pointer;transition:.15s}
+  .pill.act{background:rgba(34,211,238,.14);color:var(--cyan)}
+  .btn{width:100%;margin-top:auto;border:0;border-radius:var(--r2);padding:14px;font-family:var(--font);
+    font-size:14.5px;font-weight:700;cursor:pointer;background:var(--card2);color:var(--tx3);transition:.2s}
+  .btn.ready{background:var(--grad);color:#04121a;box-shadow:0 8px 26px rgba(34,211,238,.25)}
+  .btn.ready:hover{transform:translateY(-1px)}
+  .btn:disabled{cursor:not-allowed;opacity:.6}
 
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background: var(--gradient-bg);
-            pointer-events: none;
-            z-index: 0;
-        }
+  #prog{display:none}
+  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+  @media(max-width:640px){.steps{grid-template-columns:1fr}}
+  .step{border:1px solid var(--line);border-radius:var(--r2);padding:16px;background:var(--card2);transition:.3s}
+  .step.act{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(34,211,238,.2),0 8px 28px rgba(34,211,238,.06)}
+  .step.done{border-color:rgba(52,211,153,.35)}
+  .step.err{border-color:rgba(251,113,133,.4)}
+  .step .sh{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+  .num{width:25px;height:25px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;
+    background:var(--card);color:var(--tx3);flex-shrink:0}
+  .step.act .num{background:rgba(34,211,238,.18);color:var(--cyan)}
+  .step.done .num{background:rgba(52,211,153,.18);color:var(--green)}
+  .step.err .num{background:rgba(251,113,133,.18);color:var(--rose)}
+  .step .nmm{font-size:13px;font-weight:600;color:var(--tx2)}
+  .step.act .nmm,.step.done .nmm{color:var(--tx)}
+  .step .msg{font-size:12px;color:var(--tx3);min-height:16px;margin-left:35px}
+  .spin{width:13px;height:13px;border:2px solid rgba(34,211,238,.25);border-top-color:var(--cyan);border-radius:50%;
+    margin-left:auto;animation:sp .8s linear infinite;display:none}
+  .step.act .spin{display:block}@keyframes sp{to{transform:rotate(360deg)}}
+  .log{background:#080c11;border:1px solid var(--line);border-radius:var(--r2);padding:14px;max-height:190px;
+    overflow-y:auto;font-family:var(--mono);font-size:11.5px;line-height:1.8;color:var(--tx3)}
+  .ln .tm{color:var(--tx3)} .ln .m{color:var(--tx2)}
+  .ln.success .m{color:var(--green)} .ln.info .m{color:var(--cyan)}
+  .ln.warning .m{color:var(--amber)} .ln.error .m{color:var(--rose)}
 
-        .container {
-            max-width: 1120px;
-            margin: 0 auto;
-            padding: 0 24px;
-            position: relative;
-            z-index: 1;
-        }
+  #res{display:none}
+  .rgrid{display:grid;grid-template-columns:0.9fr 1.2fr 1fr;gap:18px}
+  @media(max-width:960px){.rgrid{grid-template-columns:1fr}}
+  .r{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px}
+  .r h3{font-size:13px;font-weight:700;color:var(--tx2);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+  .cropwrap{text-align:center;margin-bottom:16px}
+  .crop{width:100%;max-width:170px;border-radius:12px;border:1px solid var(--line2)}
+  .dl{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:12.5px}
+  .dl:last-child{border-bottom:0}
+  .dl .k{color:var(--tx3);font-weight:500;white-space:nowrap}
+  .dl .v{color:var(--tx);font-weight:600;text-align:right;overflow:hidden;text-overflow:ellipsis}
+  .hash{font-family:var(--mono);font-size:11px;color:var(--cyan);cursor:pointer;background:rgba(34,211,238,.08);
+    padding:2px 7px;border-radius:5px}
+  .hash:hover{background:rgba(34,211,238,.16)}
+  .bar{height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;margin:4px 0 8px}
+  .bar>i{display:block;height:100%;background:var(--grad);border-radius:3px}
+  .mchips{display:flex;flex-wrap:wrap;gap:5px}
+  .mchip{font-size:11px;font-weight:600;color:var(--green);background:rgba(52,211,153,.1);
+    border:1px solid rgba(52,211,153,.18);border-radius:5px;padding:2px 8px}
 
-        /* ═══ HEADER ═══ */
-        header {
-            padding: 24px 0 16px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 32px;
-        }
-        .header-inner {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 16px;
-            flex-wrap: wrap;
-        }
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        .logo-icon {
-            width: 36px;
-            height: 36px;
-            background: var(--gradient-accent);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            position: relative;
-            overflow: hidden;
-        }
-        .logo-icon::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.15) 50%, transparent 70%);
-            animation: shimmer 3s infinite;
-        }
-        @keyframes shimmer {
-            0% { transform: translateX(-100%) rotate(45deg); }
-            100% { transform: translateX(100%) rotate(45deg); }
-        }
-        .logo h1 {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            background: var(--gradient-accent);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .logo h1 span {
-            font-weight: 400;
-            opacity: 0.6;
-            -webkit-text-fill-color: var(--text-secondary);
-        }
-        .header-badges {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            padding: 5px 12px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
-            background: rgba(255,255,255,0.04);
-            border: 1px solid var(--border);
-            color: var(--text-secondary);
-            white-space: nowrap;
-        }
-        .badge .dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--accent-cyan);
-            animation: pulse-dot 2s infinite;
-        }
-        .badge .dot.amber { background: var(--accent-amber); }
-        .badge .dot.off { background: var(--text-muted); animation: none; }
-        @keyframes pulse-dot {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.4; }
-        }
+  .verdict{display:flex;align-items:center;gap:12px;border-radius:var(--r2);padding:14px 16px;margin-bottom:16px;font-weight:700}
+  .verdict .em{font-size:22px}
+  .verdict .vt{font-size:14px} .verdict .vs{font-size:11.5px;font-weight:500;opacity:.8}
+  .verdict.ok{background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);color:var(--green)}
+  .verdict.bio{background:rgba(34,211,238,.1);border:1px solid rgba(34,211,238,.25);color:var(--cyan)}
+  .verdict.no{background:rgba(251,191,36,.09);border:1px solid rgba(251,191,36,.25);color:var(--amber)}
+  .verdict.none{background:rgba(255,255,255,.03);border:1px solid var(--line);color:var(--tx2)}
 
-        /* ═══ CARDS ═══ */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 28px;
-            backdrop-filter: blur(16px);
-            transition: border-color 0.3s, box-shadow 0.3s;
-        }
-        .card:hover {
-            border-color: var(--border-glow);
-            box-shadow: 0 0 40px rgba(6, 214, 160, 0.03);
-        }
-        .card-header {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
-        }
-        .card-header .icon {
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px;
-            flex-shrink: 0;
-        }
-        .card-header h2 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-primary);
-        }
-        .card-header h2 small {
-            font-weight: 400;
-            color: var(--text-secondary);
-            margin-left: 6px;
-        }
+  .idname{text-align:center;font-size:20px;font-weight:800;margin-bottom:2px}
+  .idsub{text-align:center;font-size:12px;color:var(--tx3);margin-bottom:14px}
+  .cmp{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:center;margin-bottom:14px}
+  .cmp img{width:100%;max-width:92px;aspect-ratio:1;object-fit:cover;border-radius:11px;border:1px solid var(--line2)}
+  .cmp .c{text-align:center}
+  .cmp .cl{font-size:10px;color:var(--tx3);text-transform:uppercase;letter-spacing:.5px;margin-top:5px}
+  .cmp .vk{font-weight:800;font-size:13px} .cmp .vk.y{color:var(--green)} .cmp .vk.n{color:var(--rose)}
+  .matchbox{background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:13px;margin-bottom:12px}
+  .matchbox a{color:var(--cyan);font-size:13px;font-weight:600;word-break:break-all;text-decoration:none}
+  .matchbox a:hover{text-decoration:underline}
+  .tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:5px;background:rgba(167,139,250,.12);color:var(--violet)}
+  .tag.cy{background:rgba(34,211,238,.12);color:var(--cyan)}
+  details{margin-top:10px} summary{cursor:pointer;font-size:12px;color:var(--tx3)}
+  .cand{padding:5px 0;border-bottom:1px solid var(--line);font-size:11.5px}
+  .cand a{color:var(--cyan);text-decoration:none;word-break:break-all}
+  .cand .meta{color:var(--tx3);margin-left:6px}
 
-        /* ═══ UPLOAD SECTION ═══ */
-        #upload-section { margin-bottom: 32px; }
+  .actions{display:flex;gap:9px;margin-top:14px}
+  .abtn{flex:1;border:1px solid var(--line);background:var(--card2);color:var(--tx2);border-radius:var(--r2);
+    padding:10px;font-family:var(--font);font-size:12.5px;font-weight:600;cursor:pointer;transition:.15s}
+  .abtn:hover{border-color:var(--cyan);color:var(--tx)}
+  .abtn.tm:hover{border-color:var(--rose)}
+  .abtn:disabled{opacity:.5;cursor:wait}
+  .tout{margin-top:12px;font-family:var(--mono);font-size:11px;line-height:1.75;display:none}
+  .tout.show{display:block}
+  .tout .ok{color:var(--green)} .tout .bad{color:var(--rose)} .tout .mut{color:var(--tx3)}
+  .note{font-size:11px;color:var(--tx3);text-align:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
 
-        .upload-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 24px;
-        }
-        @media (max-width: 768px) {
-            .upload-grid { grid-template-columns: 1fr; }
-        }
-
-        .dropzone {
-            position: relative;
-            border: 2px dashed rgba(255,255,255,0.08);
-            border-radius: var(--radius);
-            padding: 48px 24px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 220px;
-        }
-        .dropzone:hover, .dropzone.dragover {
-            border-color: var(--accent-cyan);
-            background: rgba(6, 214, 160, 0.03);
-        }
-        .dropzone.has-preview {
-            padding: 16px;
-        }
-        .dropzone .upload-icon {
-            font-size: 36px;
-            margin-bottom: 12px;
-            opacity: 0.5;
-        }
-        .dropzone .upload-text {
-            font-size: 14px;
-            color: var(--text-secondary);
-        }
-        .dropzone .upload-text strong {
-            color: var(--accent-cyan);
-        }
-        .dropzone input[type="file"] {
-            position: absolute;
-            inset: 0;
-            opacity: 0;
-            cursor: pointer;
-        }
-        .preview-img {
-            max-width: 100%;
-            max-height: 200px;
-            border-radius: 8px;
-            object-fit: contain;
-            display: none;
-        }
-        .dropzone.has-preview .upload-icon,
-        .dropzone.has-preview .upload-text { display: none; }
-        .dropzone.has-preview .preview-img { display: block; }
-        .preview-name {
-            margin-top: 8px;
-            font-size: 12px;
-            color: var(--text-secondary);
-            display: none;
-        }
-        .dropzone.has-preview .preview-name { display: block; }
-
-        .upload-options { display: flex; flex-direction: column; gap: 16px; }
-
-        .samples-label {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            margin-bottom: 4px;
-        }
-        .samples-grid {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        .sample-chip {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 6px 10px;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.03);
-            border: 1px solid var(--border);
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-        .sample-chip:hover {
-            border-color: var(--accent-blue);
-            background: rgba(76, 201, 240, 0.05);
-            color: var(--text-primary);
-        }
-        .sample-chip.selected {
-            border-color: var(--accent-cyan);
-            background: rgba(6, 214, 160, 0.08);
-            color: var(--accent-cyan);
-        }
-        .sample-chip img {
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            object-fit: cover;
-        }
-
-        .network-toggle {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .network-toggle label {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-secondary);
-        }
-        .pill-group {
-            display: flex;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-        .pill {
-            padding: 6px 16px;
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-secondary);
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: var(--font);
-        }
-        .pill.active {
-            background: rgba(6, 214, 160, 0.12);
-            color: var(--accent-cyan);
-        }
-
-        .btn-scan {
-            width: 100%;
-            padding: 14px 24px;
-            border: none;
-            border-radius: var(--radius-sm);
-            font-size: 15px;
-            font-weight: 600;
-            font-family: var(--font);
-            cursor: pointer;
-            transition: all 0.3s;
-            background: rgba(255,255,255,0.05);
-            color: var(--text-muted);
-            position: relative;
-            overflow: hidden;
-            margin-top: auto;
-        }
-        .btn-scan.ready {
-            background: var(--gradient-accent);
-            color: #06080f;
-            box-shadow: 0 0 30px rgba(6, 214, 160, 0.15);
-        }
-        .btn-scan.ready:hover {
-            box-shadow: 0 0 50px rgba(6, 214, 160, 0.25);
-            transform: translateY(-1px);
-        }
-        .btn-scan:disabled {
-            cursor: not-allowed;
-            opacity: 0.5;
-        }
-
-        /* ═══ PROGRESS SECTION ═══ */
-        #progress-section {
-            display: none;
-            margin-bottom: 32px;
-            animation: fadeIn 0.4s ease;
-        }
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(8px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .stages-row {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 20px;
-        }
-        @media (max-width: 640px) {
-            .stages-row { grid-template-columns: 1fr; }
-        }
-        .stage-card {
-            padding: 18px;
-            border-radius: var(--radius-sm);
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            transition: all 0.4s;
-        }
-        .stage-card.active {
-            border-color: var(--accent-blue);
-            background: rgba(76, 201, 240, 0.04);
-            box-shadow: 0 0 30px rgba(76, 201, 240, 0.06);
-        }
-        .stage-card.done {
-            border-color: rgba(6, 214, 160, 0.2);
-            background: rgba(6, 214, 160, 0.03);
-        }
-        .stage-card.error {
-            border-color: rgba(239, 71, 111, 0.2);
-            background: rgba(239, 71, 111, 0.03);
-        }
-        .stage-head {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 8px;
-        }
-        .stage-num {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: 700;
-            background: rgba(255,255,255,0.05);
-            color: var(--text-muted);
-            transition: all 0.3s;
-            flex-shrink: 0;
-        }
-        .stage-card.active .stage-num {
-            background: rgba(76, 201, 240, 0.15);
-            color: var(--accent-blue);
-        }
-        .stage-card.done .stage-num {
-            background: rgba(6, 214, 160, 0.15);
-            color: var(--accent-cyan);
-        }
-        .stage-card.error .stage-num {
-            background: rgba(239, 71, 111, 0.15);
-            color: var(--accent-rose);
-        }
-        .stage-name {
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text-secondary);
-        }
-        .stage-card.active .stage-name { color: var(--text-primary); }
-        .stage-card.done .stage-name { color: var(--accent-cyan); }
-        .stage-msg {
-            font-size: 12px;
-            color: var(--text-muted);
-            min-height: 18px;
-        }
-        .stage-card.active .stage-msg { color: var(--text-secondary); }
-
-        .spinner {
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(76, 201, 240, 0.2);
-            border-top: 2px solid var(--accent-blue);
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-            display: none;
-        }
-        .stage-card.active .spinner { display: block; }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-
-        .log-area {
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 16px;
-            max-height: 180px;
-            overflow-y: auto;
-            font-family: var(--mono);
-            font-size: 12px;
-            line-height: 1.8;
-            color: var(--text-muted);
-        }
-        .log-area::-webkit-scrollbar { width: 4px; }
-        .log-area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-        .log-line { opacity: 0; animation: logIn 0.3s forwards; }
-        @keyframes logIn {
-            from { opacity: 0; transform: translateX(-6px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        .log-line .time { color: var(--text-muted); }
-        .log-line .msg { color: var(--text-secondary); }
-        .log-line.success .msg { color: var(--accent-cyan); }
-        .log-line.info .msg { color: var(--accent-blue); }
-        .log-line.warning .msg { color: var(--accent-amber); }
-        .log-line.error .msg { color: var(--accent-rose); }
-
-        /* ═══ RESULTS SECTION ═══ */
-        #results-section {
-            display: none;
-            margin-bottom: 32px;
-            animation: fadeIn 0.5s ease;
-        }
-        .results-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
-            gap: 20px;
-        }
-        @media (max-width: 900px) {
-            .results-grid { grid-template-columns: 1fr; }
-        }
-
-        .result-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 24px;
-            backdrop-filter: blur(16px);
-            transition: all 0.3s;
-        }
-        .result-card:hover {
-            border-color: var(--border-glow);
-        }
-        .result-card h3 {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin-bottom: 16px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .result-card h3 .emoji { font-size: 16px; }
-
-        .face-crop-wrap {
-            text-align: center;
-            margin-bottom: 16px;
-        }
-        .face-crop-img {
-            width: 100%;
-            max-width: 180px;
-            border-radius: 10px;
-            border: 2px solid var(--border);
-            transition: border-color 0.3s;
-        }
-        .face-crop-img:hover {
-            border-color: var(--accent-cyan);
-        }
-
-        .detail-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 7px 0;
-            border-bottom: 1px solid rgba(255,255,255,0.03);
-            font-size: 13px;
-        }
-        .detail-row:last-child { border-bottom: none; }
-        .detail-label { color: var(--text-muted); font-weight: 500; }
-        .detail-value { color: var(--text-primary); font-weight: 500; text-align: right; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-        .hash-value {
-            font-family: var(--mono);
-            font-size: 11px;
-            color: var(--accent-blue);
-            cursor: pointer;
-            padding: 3px 8px;
-            background: rgba(76, 201, 240, 0.06);
-            border-radius: 4px;
-            transition: background 0.2s;
-        }
-        .hash-value:hover { background: rgba(76, 201, 240, 0.12); }
-
-        .quality-bar-wrap {
-            width: 100%;
-            height: 6px;
-            background: rgba(255,255,255,0.05);
-            border-radius: 3px;
-            overflow: hidden;
-        }
-        .quality-bar {
-            height: 100%;
-            border-radius: 3px;
-            transition: width 1s ease;
-            background: var(--gradient-accent);
-        }
-
-        .model-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 4px;
-        }
-        .model-chip {
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 500;
-            background: rgba(6, 214, 160, 0.08);
-            color: var(--accent-cyan);
-            border: 1px solid rgba(6, 214, 160, 0.12);
-        }
-
-        .match-card-inner {
-            padding: 14px;
-            border-radius: 8px;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            margin-bottom: 12px;
-        }
-        .match-url {
-            color: var(--accent-blue);
-            text-decoration: none;
-            font-size: 13px;
-            font-weight: 500;
-            word-break: break-all;
-        }
-        .match-url:hover { text-decoration: underline; }
-        .match-platform {
-            display: inline-flex;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            background: rgba(123, 97, 255, 0.1);
-            color: var(--accent-purple);
-            margin-top: 6px;
-        }
-
-        .score-ring {
-            width: 60px;
-            height: 60px;
-            margin: 0 auto 10px;
-            position: relative;
-        }
-        .score-ring svg { transform: rotate(-90deg); }
-        .score-ring circle {
-            fill: none;
-            stroke-width: 4;
-        }
-        .score-ring .bg { stroke: rgba(255,255,255,0.05); }
-        .score-ring .fg { stroke: var(--accent-cyan); stroke-linecap: round; transition: stroke-dashoffset 1s ease; }
-        .score-ring .value {
-            position: absolute;
-            inset: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 700;
-            color: var(--accent-cyan);
-        }
-
-        .no-match {
-            text-align: center;
-            padding: 24px 16px;
-            color: var(--text-muted);
-        }
-        .no-match .emoji { font-size: 28px; margin-bottom: 8px; }
-        .no-match p { font-size: 13px; }
-        .no-match .subtle { font-size: 12px; margin-top: 6px; color: var(--text-muted); opacity: 0.7; }
-
-        .verified-badge {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            padding: 16px;
-            border-radius: var(--radius-sm);
-            font-size: 14px;
-            font-weight: 700;
-            margin-bottom: 16px;
-        }
-        .verified-badge.success {
-            background: rgba(6, 214, 160, 0.08);
-            border: 1px solid rgba(6, 214, 160, 0.15);
-            color: var(--accent-cyan);
-        }
-        .verified-badge.fail {
-            background: rgba(239, 71, 111, 0.08);
-            border: 1px solid rgba(239, 71, 111, 0.15);
-            color: var(--accent-rose);
-        }
-        .verified-badge .shield { font-size: 22px; }
-
-        .immutable-note {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-align: center;
-            margin-top: 14px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border);
-            opacity: 0.7;
-        }
-
-        /* ═══ HISTORY SECTION ═══ */
-        #history-section { margin-bottom: 48px; }
-        .history-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            cursor: pointer;
-            padding: 4px 0;
-        }
-        .history-header h2 {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .history-toggle {
-            font-size: 12px;
-            color: var(--text-muted);
-            transition: transform 0.3s;
-        }
-        .history-list {
-            margin-top: 16px;
-            display: none;
-        }
-        .history-list.open { display: block; }
-
-        .history-row {
-            display: grid;
-            grid-template-columns: 1fr 100px 90px 70px;
-            gap: 12px;
-            padding: 12px 16px;
-            border-radius: var(--radius-sm);
-            background: rgba(255,255,255,0.02);
-            border: 1px solid var(--border);
-            margin-bottom: 6px;
-            align-items: center;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 13px;
-        }
-        .history-row:hover {
-            background: rgba(255,255,255,0.04);
-            border-color: var(--border-glow);
-        }
-        .history-file { color: var(--text-primary); font-weight: 500; }
-        .history-platform { color: var(--accent-purple); }
-        .history-network { color: var(--text-muted); }
-        .history-status { text-align: right; }
-        .status-dot {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            margin-right: 4px;
-        }
-        .status-dot.ok { background: var(--accent-cyan); }
-        .status-dot.partial { background: var(--accent-amber); }
-
-        .empty-state {
-            text-align: center;
-            padding: 40px 20px;
-            color: var(--text-muted);
-            font-size: 14px;
-        }
-
-        /* ═══ TOAST ═══ */
-        .toast {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            padding: 10px 18px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-weight: 500;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            color: var(--text-primary);
-            backdrop-filter: blur(16px);
-            z-index: 1000;
-            animation: toastIn 0.3s ease, toastOut 0.3s ease 2.2s forwards;
-        }
-        @keyframes toastIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes toastOut { from { opacity: 1; } to { opacity: 0; } }
-
-        /* Scrollbar */
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
-    </style>
+  .hh{display:flex;align-items:center;justify-content:space-between;cursor:pointer}
+  .hh h3{font-size:14px;font-weight:700;color:var(--tx2)}
+  .hlist{margin-top:14px;display:none}.hlist.open{display:block}
+  .hrow{display:grid;grid-template-columns:1fr 130px 90px 80px;gap:10px;align-items:center;font-size:12.5px;
+    background:var(--card2);border:1px solid var(--line);border-radius:var(--r2);padding:11px 14px;margin-bottom:6px;cursor:pointer}
+  .hrow:hover{border-color:var(--line2)}
+  .hrow .who{color:var(--tx);font-weight:600;overflow:hidden;text-overflow:ellipsis}
+  .sdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+  .sdot.ok{background:var(--green)}.sdot.no{background:var(--amber)}
+  .empty{text-align:center;padding:34px;color:var(--tx3);font-size:13px}
+  .toast{position:fixed;bottom:22px;right:22px;background:var(--card2);border:1px solid var(--line2);color:var(--tx);
+    padding:11px 18px;border-radius:10px;font-size:13px;z-index:100;animation:ti .25s}
+  @keyframes ti{from{opacity:0;transform:translateY(10px)}}
+</style>
 </head>
 <body>
-    <div class="container">
-        <!-- HEADER -->
-        <header>
-            <div class="header-inner">
-                <div class="logo">
-                    <div class="logo-icon">🔍</div>
-                    <h1>FaceTrace <span>v1.0</span></h1>
-                </div>
-                <div class="header-badges">
-                    <div class="badge" id="network-badge">
-                        <span class="dot" id="network-dot"></span>
-                        <span id="network-name">Localhost</span>
-                    </div>
-                    <div class="badge" id="contract-badge" title="Click to copy" style="cursor:pointer; display:none;">
-                        📄 <span id="contract-addr">—</span>
-                    </div>
-                </div>
-            </div>
-        </header>
+<header><div class="wrap head">
+  <div class="brand">
+    <div class="logo">🛰️</div>
+    <div><h1>FaceTrace</h1><p>Face identification → social match → blockchain proof</p></div>
+  </div>
+  <div class="engines" id="engines">
+    <span class="chip on"><span class="d"></span>Google Lens</span>
+    <span class="chip on"><span class="d"></span>Curated Index</span>
+    <span class="chip" id="chip-fc"><span class="d"></span>FaceCheck.ID</span>
+    <span class="chip" id="chip-net"><span class="d"></span>Localhost</span>
+  </div>
+</div></header>
 
-        <!-- UPLOAD SECTION -->
-        <section id="upload-section" class="card">
-            <div class="card-header">
-                <div class="icon" style="background: rgba(76, 201, 240, 0.1); color: var(--accent-blue);">📸</div>
-                <h2>New Scan <small>Upload or choose a sample image</small></h2>
-            </div>
-            <div class="upload-grid">
-                <div class="dropzone" id="dropzone">
-                    <input type="file" id="file-input" accept="image/*">
-                    <div class="upload-icon">⬆️</div>
-                    <div class="upload-text">
-                        Drag & drop an image here<br>
-                        or <strong>click to browse</strong>
-                    </div>
-                    <img class="preview-img" id="preview-img" alt="Preview">
-                    <div class="preview-name" id="preview-name"></div>
-                </div>
-                <div class="upload-options">
-                    <div>
-                        <div class="samples-label">Or use a sample</div>
-                        <div class="samples-grid" id="samples-grid">
-                            <!-- Filled by JS -->
-                        </div>
-                    </div>
-                    <div class="network-toggle">
-                        <label>Network</label>
-                        <div class="pill-group">
-                            <button class="pill active" data-network="localhost">Localhost</button>
-                            <button class="pill" data-network="sepolia">Sepolia</button>
-                        </div>
-                    </div>
-                    <button class="btn-scan" id="btn-scan" disabled>
-                        Select an image to begin
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <!-- PROGRESS SECTION -->
-        <section id="progress-section" class="card">
-            <div class="card-header">
-                <div class="icon" style="background: rgba(76, 201, 240, 0.1); color: var(--accent-blue);">⚡</div>
-                <h2>Pipeline Progress <small id="elapsed-time"></small></h2>
-            </div>
-            <div class="stages-row">
-                <div class="stage-card" id="stage-1">
-                    <div class="stage-head">
-                        <div class="stage-num">1</div>
-                        <div class="stage-name">Face Detection</div>
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="stage-msg" id="stage-1-msg">Waiting...</div>
-                </div>
-                <div class="stage-card" id="stage-2">
-                    <div class="stage-head">
-                        <div class="stage-num">2</div>
-                        <div class="stage-name">Web Search</div>
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="stage-msg" id="stage-2-msg">Waiting...</div>
-                </div>
-                <div class="stage-card" id="stage-3">
-                    <div class="stage-head">
-                        <div class="stage-num">3</div>
-                        <div class="stage-name">Blockchain</div>
-                        <div class="spinner"></div>
-                    </div>
-                    <div class="stage-msg" id="stage-3-msg">Waiting...</div>
-                </div>
-            </div>
-            <div class="log-area" id="log-area"></div>
-        </section>
-
-        <!-- RESULTS SECTION -->
-        <section id="results-section">
-            <div class="results-grid">
-                <!-- Face Intelligence -->
-                <div class="result-card" id="face-card">
-                    <h3><span class="emoji">🧠</span> Face Intelligence</h3>
-                    <div class="face-crop-wrap">
-                        <img class="face-crop-img" id="face-crop-img" alt="Face Crop" src="">
-                    </div>
-                    <div id="face-details">
-                        <!-- Filled by JS -->
-                    </div>
-                </div>
-
-                <!-- Search Results -->
-                <div class="result-card" id="search-card">
-                    <h3><span class="emoji">🌐</span> Search Results</h3>
-                    <div id="search-details">
-                        <!-- Filled by JS -->
-                    </div>
-                </div>
-
-                <!-- Blockchain -->
-                <div class="result-card" id="blockchain-card">
-                    <h3><span class="emoji">⛓️</span> Blockchain Verification</h3>
-                    <div id="blockchain-details">
-                        <!-- Filled by JS -->
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- HISTORY SECTION -->
-        <section id="history-section" class="card">
-            <div class="history-header" id="history-toggle">
-                <h2>📋 Scan History</h2>
-                <span class="history-toggle" id="history-arrow">▼</span>
-            </div>
-            <div class="history-list" id="history-list">
-                <!-- Filled by JS -->
-            </div>
-        </section>
+<div class="wrap">
+  <section class="card" id="upload">
+    <div class="ctitle"><span class="ic">📸</span> New scan <small>upload a face or pick a sample</small></div>
+    <div class="ugrid">
+      <label class="drop" id="drop">
+        <input type="file" id="file" accept="image/*">
+        <div class="up">⬆️</div>
+        <div class="t">Drop an image or <b>browse</b></div>
+        <img id="prev" alt="preview"><div class="nm" id="prevnm"></div>
+      </label>
+      <div class="opts">
+        <div>
+          <div class="lbl">Or use a sample</div>
+          <div class="samples" id="samples"></div>
+        </div>
+        <div class="row">
+          <div class="lbl" style="margin:0">Network</div>
+          <div class="pillgrp">
+            <button class="pill act" data-net="localhost">Localhost</button>
+            <button class="pill" data-net="sepolia">Sepolia</button>
+          </div>
+        </div>
+        <button class="btn" id="scan" disabled>Select an image to begin</button>
+      </div>
     </div>
+  </section>
 
-    <script>
-    // ═══ STATE ═══
-    let selectedFile = null;
-    let selectedSample = null;
-    let network = 'localhost';
-    let scanStartTime = null;
-    let elapsedTimer = null;
-    let faceData = null;
-    let matchData = null;
-    let blockchainData = null;
+  <section class="card" id="prog">
+    <div class="ctitle"><span class="ic">⚡</span> Pipeline <small id="elapsed"></small></div>
+    <div class="steps">
+      <div class="step" id="s1"><div class="sh"><span class="num">1</span><span class="nmm">Face detection</span><span class="spin"></span></div><div class="msg" id="s1m">Waiting…</div></div>
+      <div class="step" id="s2"><div class="sh"><span class="num">2</span><span class="nmm">Identity &amp; search</span><span class="spin"></span></div><div class="msg" id="s2m">Waiting…</div></div>
+      <div class="step" id="s3"><div class="sh"><span class="num">3</span><span class="nmm">Blockchain</span><span class="spin"></span></div><div class="msg" id="s3m">Waiting…</div></div>
+    </div>
+    <div class="log" id="log"></div>
+  </section>
 
-    // ═══ DOM ═══
-    const $ = id => document.getElementById(id);
-    const dropzone = $('dropzone');
-    const fileInput = $('file-input');
-    const previewImg = $('preview-img');
-    const previewName = $('preview-name');
-    const btnScan = $('btn-scan');
-    const samplesGrid = $('samples-grid');
-    const progressSection = $('progress-section');
-    const resultsSection = $('results-section');
-    const logArea = $('log-area');
-    const elapsedEl = $('elapsed-time');
+  <section id="res">
+    <div class="rgrid">
+      <div class="r" id="rface"><h3>🧠 Face intelligence</h3><div class="cropwrap"><img class="crop" id="crop" alt=""></div><div id="faceb"></div></div>
+      <div class="r" id="rid"><h3>🔎 Identity &amp; match</h3><div id="idb"></div></div>
+      <div class="r" id="rbc"><h3>⛓️ Blockchain proof</h3><div id="bcb"></div></div>
+    </div>
+  </section>
 
-    // ═══ INIT ═══
-    document.addEventListener('DOMContentLoaded', () => {
-        loadSamples();
-        loadHistory();
-        setupDragDrop();
-        setupNetworkToggle();
-    });
+  <section class="card" id="hist">
+    <div class="hh" id="htoggle"><h3>📋 Scan history</h3><span id="harrow" style="color:var(--tx3)">▼</span></div>
+    <div class="hlist" id="hlist"></div>
+  </section>
+</div>
 
-    // ═══ SAMPLES ═══
-    async function loadSamples() {
-        try {
-            const res = await fetch('/api/samples');
-            const samples = await res.json();
-            samplesGrid.innerHTML = '';
-            if (samples.length === 0) {
-                samplesGrid.innerHTML = '<span style="font-size:12px;color:var(--text-muted)">No samples found in /samples</span>';
-                return;
-            }
-            samples.forEach(s => {
-                const chip = document.createElement('div');
-                chip.className = 'sample-chip';
-                chip.innerHTML = `<img src="${s.path}" alt="${s.name}" onerror="this.style.display='none'"> ${s.name}`;
-                chip.addEventListener('click', () => selectSample(s.name, chip));
-                samplesGrid.appendChild(chip);
-            });
-        } catch (e) {
-            samplesGrid.innerHTML = '<span style="font-size:12px;color:var(--accent-rose)">Failed to load samples</span>';
-        }
-    }
+<script>
+const $=id=>document.getElementById(id);
+let file=null, sample=null, net='localhost', t0=null, timer=null, runFile=null;
 
-    function selectSample(name, chip) {
-        selectedFile = null;
-        selectedSample = name;
+document.addEventListener('DOMContentLoaded',()=>{loadSamples();loadHistory();
+  $('drop').addEventListener('dragover',e=>{e.preventDefault();$('drop').classList.add('over')});
+  $('drop').addEventListener('dragleave',()=>$('drop').classList.remove('over'));
+  $('drop').addEventListener('drop',e=>{e.preventDefault();$('drop').classList.remove('over');if(e.dataTransfer.files[0])pickFile(e.dataTransfer.files[0])});
+  $('file').addEventListener('change',e=>{if(e.target.files[0])pickFile(e.target.files[0])});
+  document.querySelectorAll('.pill').forEach(p=>p.addEventListener('click',()=>{
+    document.querySelectorAll('.pill').forEach(x=>x.classList.remove('act'));p.classList.add('act');
+    net=p.dataset.net; $('chip-net').lastChild.textContent = net==='localhost'?'Localhost':'Sepolia';}));
+  $('htoggle').addEventListener('click',()=>{$('hlist').classList.toggle('open');
+    $('harrow').textContent=$('hlist').classList.contains('open')?'▲':'▼';});
+});
 
-        // Reset file preview
-        dropzone.classList.remove('has-preview');
-        previewImg.src = '';
+async function loadSamples(){
+  try{const s=await(await fetch('/api/samples')).json();const g=$('samples');g.innerHTML='';
+    if(!s.length){g.innerHTML='<span style="font-size:12px;color:var(--tx3)">No samples in /samples</span>';return;}
+    s.forEach(x=>{const c=document.createElement('div');c.className='samp';
+      c.innerHTML=`<img src="${x.path}" onerror="this.style.display='none'"> ${esc(x.name)}`;
+      c.onclick=()=>pickSample(x.name,c);g.appendChild(c);});
+  }catch(e){}
+}
+function pickSample(name,el){file=null;sample=name;
+  $('prev').src=`/samples/${name}`;$('prevnm').textContent=name;$('drop').classList.add('has');
+  document.querySelectorAll('.samp').forEach(c=>c.classList.remove('sel'));el.classList.add('sel');ready();}
+function pickFile(f){if(!f.type.startsWith('image/'))return toast('Please pick an image');
+  file=f;sample=null;const r=new FileReader();r.onload=e=>{$('prev').src=e.target.result;$('prevnm').textContent=f.name;$('drop').classList.add('has');};r.readAsDataURL(f);
+  document.querySelectorAll('.samp').forEach(c=>c.classList.remove('sel'));ready();}
+function ready(){const ok=!!(file||sample);$('scan').disabled=!ok;$('scan').className='btn'+(ok?' ready':'');
+  $('scan').textContent=ok?'🔍  Start scan':'Select an image to begin';$('scan').onclick=ok?start:null;}
 
-        // Show sample preview in dropzone
-        previewImg.src = `/samples/${name}`;
-        previewImg.style.display = 'block';
-        previewName.textContent = name;
-        previewName.style.display = 'block';
-        dropzone.querySelector('.upload-icon').style.display = 'none';
-        dropzone.querySelector('.upload-text').style.display = 'none';
-        dropzone.classList.add('has-preview');
+async function start(){
+  $('scan').disabled=true;$('scan').textContent='⏳ Starting…';$('res').style.display='none';$('log').innerHTML='';
+  [1,2,3].forEach(i=>{$('s'+i).className='step';$('s'+i+'m').textContent='Waiting…';$('s'+i).querySelector('.num').textContent=i;});
+  $('prog').style.display='block';$('prog').scrollIntoView({behavior:'smooth',block:'center'});
+  t0=Date.now();clearInterval(timer);timer=setInterval(()=>$('elapsed').textContent=((Date.now()-t0)/1000).toFixed(1)+'s',100);
+  const fd=new FormData();if(file)fd.append('file',file);else fd.append('sample',sample);fd.append('network',net);
+  try{const r=await fetch('/api/scan',{method:'POST',body:fd});if(!r.ok)throw new Error((await r.json()).detail||'failed');
+    const {scan_id}=await r.json();log('info',`Scan ${scan_id} started`);stream(scan_id);
+  }catch(e){log('error',e.message);clearInterval(timer);ready();}
+}
 
-        // Highlight chip
-        document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('selected'));
-        chip.classList.add('selected');
+function stream(id){
+  const es=new EventSource(`/api/stream/${id}`);let done=false;
+  const stage=(n,c)=>{const el=$('s'+n);if(!el)return;el.className='step '+c;
+    if(c==='done')el.querySelector('.num').textContent='✓';if(c==='err')el.querySelector('.num').textContent='✕';};
+  const msg=(n,m)=>{const e=$('s'+n+'m');if(e)e.textContent=m;};
+  es.addEventListener('pipeline_start',()=>log('info','Pipeline started'));
+  es.addEventListener('stage_start',e=>{const d=JSON.parse(e.data);stage(d.stage,'act');msg(d.stage,d.title||'Running…');log('info',`Stage ${d.stage} — ${d.title||''}`);});
+  es.addEventListener('search_step',e=>{const d=JSON.parse(e.data);msg(2,d.message);log('info',d.message);});
+  es.addEventListener('identity',e=>{const d=JSON.parse(e.data);log('info',`Candidate: ${d.name} — verifying…`);msg(2,`Verifying: ${d.name}`);});
+  es.addEventListener('verification',e=>{const d=JSON.parse(e.data);const who=d.suggested||'candidate';
+    d.verified?log('success',`✓ ${who} CONFIRMED (${d.matches}/${d.refs} refs)`):log('warning',`✕ ${who} not confirmed (${d.matches}/${d.refs})`);});
+  es.addEventListener('match',e=>{const d=JSON.parse(e.data);log('success',`Match: ${d.platform} · ${d.score}`);});
+  es.addEventListener('stage_complete',e=>{const d=JSON.parse(e.data);stage(d.stage,'done');
+    if(d.stage===1){msg(1,`Encoded · ${(d.embeddings||[]).length} models`);log('success',`Face hash ${(d.face_hash||'').slice(0,20)}…`);}
+    else if(d.stage===2){const w=d.person_name||d.lens_suggested_name||'unidentified';msg(2,d.match_found?`Match: ${w}`:`No confirmed match`);}
+    else if(d.stage===3){msg(3,d.verified?'Anchored & verified ✓':'Anchored');log('success',`TX ${(d.tx_hash||'').slice(0,16)}… · block ${d.block_number}`);}});
+  es.addEventListener('stage_error',e=>{const d=JSON.parse(e.data);stage(d.stage,'err');msg(d.stage,d.error||'Failed');log('error',`Stage ${d.stage}: ${d.error}`);});
+  es.addEventListener('pipeline_complete',e=>{const d=JSON.parse(e.data);clearInterval(timer);
+    const s=d.elapsed_seconds||((Date.now()-t0)/1000).toFixed(1);$('elapsed').textContent=s+'s';
+    log(d.pipeline_success?'success':'warning',`Pipeline ${d.pipeline_success?'complete':'finished (partial)'} in ${s}s`);});
+  es.addEventListener('error',e=>{if(e.data){try{log('error',JSON.parse(e.data).message||'error')}catch(_){}}else if(!done)log('warning','stream ended');});
+  es.addEventListener('result',e=>{done=true;render(JSON.parse(e.data));loadHistory();ready();es.close();});
+}
 
-        updateScanButton();
-    }
+function log(lv,m){const d=new Date().toTimeString().slice(0,8);const l=document.createElement('div');
+  l.className='ln '+lv;l.innerHTML=`<span class="tm">[${d}]</span> <span class="m">${esc(m)}</span>`;
+  $('log').appendChild(l);$('log').scrollTop=$('log').scrollHeight;}
 
-    // ═══ DRAG & DROP ═══
-    function setupDragDrop() {
-        dropzone.addEventListener('dragover', e => {
-            e.preventDefault();
-            dropzone.classList.add('dragover');
-        });
-        dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
-        dropzone.addEventListener('drop', e => {
-            e.preventDefault();
-            dropzone.classList.remove('dragover');
-            if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
-        });
-        fileInput.addEventListener('change', e => {
-            if (e.target.files.length) handleFile(e.target.files[0]);
-        });
-    }
+const ENG={facecheck:'FaceCheck.ID',google_lens:'Google Lens',curated_db:'Curated Index',name_search:'Name Search',lens_visual:'Lens Visual',yandex:'Yandex'};
+function handleFromUrl(u){try{const p=new URL(u);const seg=p.pathname.split('/').filter(Boolean);
+  const d=p.hostname.replace('www.','');if(/instagram|twitter|x\.com|tiktok|facebook/.test(d)&&seg[0]&&!['p','reel','tv','explore','status'].includes(seg[0]))return '@'+seg[0];
+  return d;}catch(_){return u;}}
 
-    function handleFile(file) {
-        if (!file.type.startsWith('image/')) {
-            toast('Please select an image file');
-            return;
-        }
-        selectedFile = file;
-        selectedSample = null;
+function render(result){
+  $('res').style.display='block';runFile=result.result_file||null;
+  const face=result.face||{},s=result.search_results||{},bc=result.blockchain||{};
+  const crop=face.face_crop_display?`/output/${face.face_crop_display}`
+    :(face.face_crop_path?`/output/${face.face_crop_path.split(/[\\\/]/).pop()}?v=${encodeURIComponent(result.result_file||Date.now())}`:'');
 
-        // Show preview
-        const reader = new FileReader();
-        reader.onload = e => {
-            previewImg.src = e.target.result;
-            previewName.textContent = file.name;
-            dropzone.classList.add('has-preview');
-        };
-        reader.readAsDataURL(file);
+  $('crop').src=crop;$('crop').onerror=function(){this.style.display='none'};
+  const q=face.quality_score||0,pose=face.pose||{},ex=face.exif||{},models=face.embeddings_computed||[];
+  let f=`<div class="dl"><span class="k">Quality</span><span class="v">${(q.toFixed?q.toFixed(1):q)}/100</span></div>
+    <div class="bar"><i style="width:${Math.min(q,100)}%"></i></div>
+    <div class="dl"><span class="k">Pose</span><span class="v">${esc(pose.flag||'—')} (yaw ${pose.yaw??0})</span></div>
+    <div class="dl"><span class="k">Face hash</span><span class="hash" onclick="cp('${face.face_hash||''}')">${trunc(face.face_hash)}</span></div>`;
+  if(ex.camera_model)f+=`<div class="dl"><span class="k">Camera</span><span class="v">${esc(ex.camera_model)}</span></div>`;
+  if(ex.was_edited)f+=`<div class="dl"><span class="k">Edited</span><span class="v" style="color:var(--amber)">⚠ yes</span></div>`;
+  f+=`<div class="lbl" style="margin:12px 0 6px">Encoders</div><div class="mchips">${models.map(m=>`<span class="mchip">✓ ${esc(m)}</span>`).join('')||'—'}</div>`;
+  $('faceb').innerHTML=f;
 
-        // Clear sample selection
-        document.querySelectorAll('.sample-chip').forEach(c => c.classList.remove('selected'));
-        updateScanButton();
-    }
+  const verified=!!s.name_verified, cname=s.person_name, sug=s.lens_suggested_name, best=s.best_match, success=!!s.success;
+  const ref=s.reference_photo_display?`/output/${s.reference_photo_display}`:(s.verification_photo_url||''), vsc=s.verification_score||0, vm=s.verification_matches||0, vr=s.verification_refs||0;
+  const engines=(s.engines_with_results||[]).map(e=>`<span class="tag cy">${ENG[e]||e}</span>`).join('');
+  let state = (verified&&cname)?'confirmed' : (success&&best)?'biometric' : sug?'rejected':'none';
+  let h='';
+  if(state==='confirmed'){
+    h+=`<div class="verdict ok"><span class="em">🛡️</span><div><div class="vt">Identity verified</div><div class="vs">matched ${vm}/${vr} reference photos</div></div></div>`;
+    h+=`<div class="idname">${esc(cname)}</div><div class="idsub">independently confirmed by face match</div>`;
+    h+=cmp(crop,ref,true,vsc);
+  }else if(state==='biometric'){
+    h+=`<div class="verdict bio"><span class="em">🔗</span><div><div class="vt">Biometric social match</div><div class="vs">found by reverse face search</div></div></div>`;
+    h+=`<div class="idname">${esc(handleFromUrl(best.url))}</div><div class="idsub">${best.biometric?`biometric score ${best.biometric}`:'high-confidence match'}</div>`;
+  }else if(state==='rejected'){
+    h+=`<div class="verdict no"><span class="em">⚠️</span><div><div class="vt">Not confirmed</div><div class="vs">verify-before-claim rejected a likely look-alike</div></div></div>`;
+    h+=`<div class="idsub" style="margin-top:6px">Lens suggested <b style="color:var(--amber)">${esc(sug)}</b>, but it did not match reference photos (${vm}/${vr}). Not claimed.</div>`;
+    h+=cmp(crop,ref,false,vsc);
+  }else{
+    h+=`<div class="verdict none"><span class="em">🔒</span><div><div class="vt">No identity confirmed</div><div class="vs">a proof-of-scan record is still anchored</div></div></div>`;
+  }
+  if(best&&(state==='confirmed'||state==='biometric')){
+    h+=`<div class="matchbox"><a href="${best.url}" target="_blank">${esc(best.url)}</a><div class="tags"><span class="tag">${esc(best.platform||'web')}</span>${best.biometric?`<span class="tag cy">biometric ${best.biometric}</span>`:''}<span class="tag cy">score ${(best.composite_score||0).toFixed(2)}</span></div></div>`;
+    if(best.wayback&&best.wayback.first_seen)h+=`<div class="dl"><span class="k">First archived</span><span class="v">${best.wayback.first_seen}</span></div>`;
+    const mc=s.matched_content;if(mc&&mc.content_hash)h+=`<div class="dl"><span class="k">Content hash</span><span class="hash" onclick="cp('${mc.content_hash}')">${trunc(mc.content_hash)}</span></div>`;
+  }
+  if(engines)h+=`<div class="lbl" style="margin:12px 0 6px">Engines that found results</div><div class="tags">${engines}</div>`;
+  const cands=s.all_candidates||[];
+  if(cands.length>1){h+=`<details><summary>All ${cands.length} candidates</summary>`+cands.map(c=>`<div class="cand"><a href="${c.url}" target="_blank">${esc((c.url||'').slice(0,56))}</a><span class="meta">${esc(c.platform||'')} · ${(c.composite_score||0).toFixed(2)}</span></div>`).join('')+`</details>`;}
+  $('idb').innerHTML=h;
 
-    // ═══ NETWORK ═══
-    function setupNetworkToggle() {
-        document.querySelectorAll('.pill').forEach(pill => {
-            pill.addEventListener('click', () => {
-                document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-                pill.classList.add('active');
-                network = pill.dataset.network;
-                $('network-name').textContent = network === 'localhost' ? 'Localhost' : 'Sepolia';
-                $('network-dot').className = network === 'localhost' ? 'dot' : 'dot amber';
-            });
-        });
-    }
+  const bv=!!bc.verified;
+  let b=`<div class="verdict ${bv?'ok':'no'}"><span class="em">${bv?'🛡️':'⚠️'}</span><div><div class="vt">${bv?'Verified on-chain':'Not verified'}</div><div class="vs">${result.network||'localhost'}</div></div></div>`;
+  const rowH=(k,v)=>`<div class="dl"><span class="k">${k}</span><span class="hash" onclick="cp('${v}')">${trunc(v)}</span></div>`;
+  if(bc.payload_hash)b+=rowH('Payload hash',bc.payload_hash);
+  if(bc.tx_hash)b+=rowH('TX hash',bc.tx_hash);
+  if(bc.block_number)b+=`<div class="dl"><span class="k">Block</span><span class="v">#${bc.block_number}</span></div>`;
+  if(bc.gas_used)b+=`<div class="dl"><span class="k">Gas used</span><span class="v">${(bc.gas_used).toLocaleString?bc.gas_used.toLocaleString():bc.gas_used}</span></div>`;
+  if(bc.contract_address)b+=rowH('Contract',bc.contract_address);
+  if(bc.etherscan_url)b+=`<div class="dl"><span class="k">Etherscan</span><a href="${bc.etherscan_url}" target="_blank" style="color:var(--cyan);font-size:12px">view ↗</a></div>`;
+  if(bc.payload_hash&&runFile){b+=`<div class="actions"><button class="abtn" onclick="reverify()">🔁 Re-verify</button><button class="abtn tm" onclick="tamper()">🧪 Tamper test</button></div><div class="tout" id="tout"></div>`;}
+  b+=`<div class="note">The SHA-256 payload is stored immutably on-chain. Any change yields a different hash absent from the ledger.</div>`;
+  $('bcb').innerHTML=b;
+  setTimeout(()=>$('res').scrollIntoView({behavior:'smooth',block:'start'}),250);
+}
+function cmp(crop,ref,ok,score){return `<div class="cmp">
+  <div class="c"><img src="${crop}" onerror="this.style.opacity=.15"><div class="cl">input face</div></div>
+  <div class="c"><div class="vk ${ok?'y':'n'}">${ok?'✓ MATCH':'✕ NO MATCH'}</div><div class="cl">score ${(score||0).toFixed(2)}</div></div>
+  <div class="c"><img src="${ref}" onerror="this.style.opacity=.15;this.src=''"><div class="cl">reference</div></div></div>`;}
 
-    function updateScanButton() {
-        const ready = !!(selectedFile || selectedSample);
-        btnScan.disabled = !ready;
-        btnScan.className = 'btn-scan' + (ready ? ' ready' : '');
-        btnScan.textContent = ready ? '🔍  Start Scan' : 'Select an image to begin';
-        btnScan.onclick = ready ? startScan : null;
-    }
+async function reverify(){if(!runFile)return;const o=$('tout');o.className='tout show';o.innerHTML='<div class="mut">Re-reading the ledger…</div>';
+  try{const d=await(await fetch(`/api/verify-demo/${runFile}`,{method:'POST'})).json();
+    o.innerHTML=`<div class="${d.genuine.verified?'ok':'bad'}">${d.genuine.verified?'✓':'✕'} Genuine record ${d.genuine.verified?'verified':'NOT found'} on-chain</div><div class="mut">confidence ${d.genuine.on_chain_confidence??'—'} · ${d.genuine.anchored_at||''}</div>`;
+  }catch(e){o.innerHTML=`<div class="bad">Error: ${esc(e.message)}</div>`;}}
+async function tamper(){if(!runFile)return;const o=$('tout');o.className='tout show';o.innerHTML='<div class="mut">Running tamper test…</div>';
+  try{const d=await(await fetch(`/api/verify-demo/${runFile}`,{method:'POST'})).json();
+    o.innerHTML=`<div class="${d.genuine.verified?'ok':'bad'}">${d.genuine.verified?'✓':'✕'} Original payload → hash present on-chain</div>
+      <div class="bad">✎ Altered "${d.tampered.changed_field}" → ${trunc(d.tampered.tampered_hash)}</div>
+      <div class="${d.tampered.found_on_chain?'bad':'ok'}">${d.tampered.found_on_chain?'✕ tampered hash unexpectedly found':'✓ tampered hash ABSENT — tampering detected'}</div>`;
+  }catch(e){o.innerHTML=`<div class="bad">Error: ${esc(e.message)}</div>`;}}
 
-    // ═══ SCAN ═══
-    async function startScan() {
-        btnScan.disabled = true;
-        btnScan.textContent = '⏳  Starting...';
+async function loadHistory(){try{const h=await(await fetch('/api/history')).json();const l=$('hlist');
+  if(!h.length){l.innerHTML='<div class="empty">No scans yet.</div>';return;}
+  l.innerHTML=h.map(x=>`<div class="hrow" onclick="loadRun('${x.filename}')">
+    <div class="who">${esc(x.input_image||'')}</div><div style="color:var(--violet)">${esc(x.platform||'—')}</div>
+    <div style="color:var(--tx3)">${esc(x.network||'')}</div>
+    <div><span class="sdot ${x.success?'ok':'no'}"></span>${x.success?'Verified':'Partial'}</div></div>`).join('');
+}catch(e){}}
+async function loadRun(f){try{render(await(await fetch(`/api/result/${f}`)).json());}catch(e){toast('Failed to load');}}
 
-        // Reset state
-        faceData = null;
-        matchData = null;
-        blockchainData = null;
-        logArea.innerHTML = '';
-        resultsSection.style.display = 'none';
-
-        // Reset stages
-        [1, 2, 3].forEach(i => {
-            $(`stage-${i}`).className = 'stage-card';
-            $(`stage-${i}-msg`).textContent = 'Waiting...';
-        });
-
-        // Show progress
-        progressSection.style.display = 'block';
-        progressSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
-
-        // Start elapsed timer
-        scanStartTime = Date.now();
-        clearInterval(elapsedTimer);
-        elapsedTimer = setInterval(() => {
-            const sec = ((Date.now() - scanStartTime) / 1000).toFixed(1);
-            elapsedEl.textContent = `${sec}s`;
-        }, 100);
-
-        // Build form data
-        const formData = new FormData();
-        if (selectedFile) {
-            formData.append('file', selectedFile);
-        } else if (selectedSample) {
-            formData.append('sample', selectedSample);
-        }
-        formData.append('network', network);
-
-        try {
-            const res = await fetch('/api/scan', { method: 'POST', body: formData });
-            if (!res.ok) {
-                const err = await res.json();
-                throw new Error(err.detail || 'Scan failed');
-            }
-            const { scan_id } = await res.json();
-            addLog('info', `Scan ${scan_id} started`);
-            connectSSE(scan_id);
-        } catch (e) {
-            addLog('error', `Error: ${e.message}`);
-            clearInterval(elapsedTimer);
-            btnScan.disabled = false;
-            updateScanButton();
-        }
-    }
-
-    // ═══ SSE ═══
-    function connectSSE(scanId) {
-        const source = new EventSource(`/api/stream/${scanId}`);
-
-        source.addEventListener('stage', e => {
-            const d = JSON.parse(e.data);
-            const el = $(`stage-${d.stage}`);
-            const msgEl = $(`stage-${d.stage}-msg`);
-            if (!el) return;
-
-            if (d.status === 'running') {
-                el.className = 'stage-card active';
-                addLog('info', d.message);
-            } else if (d.status === 'done') {
-                el.className = 'stage-card done';
-                el.querySelector('.stage-num').textContent = '✓';
-                addLog('success', d.message);
-            } else if (d.status === 'error') {
-                el.className = 'stage-card error';
-                el.querySelector('.stage-num').textContent = '✗';
-                addLog('error', d.message);
-            }
-            msgEl.textContent = d.message;
-        });
-
-        source.addEventListener('face', e => {
-            faceData = JSON.parse(e.data);
-            addLog('success', `Face hash: ${faceData.face_hash.substring(0, 24)}...`);
-        });
-
-        source.addEventListener('match', e => {
-            matchData = JSON.parse(e.data);
-            addLog('success', `Match found: ${matchData.platform} (score: ${matchData.score})`);
-        });
-
-        source.addEventListener('blockchain', e => {
-            blockchainData = JSON.parse(e.data);
-            addLog('success', `TX: ${blockchainData.tx_hash.substring(0, 18)}... | Block: ${blockchainData.block_number}`);
-        });
-
-        source.addEventListener('complete', e => {
-            const d = JSON.parse(e.data);
-            clearInterval(elapsedTimer);
-            const sec = d.elapsed || ((Date.now() - scanStartTime) / 1000).toFixed(1);
-            elapsedEl.textContent = `${sec}s`;
-
-            if (d.success) {
-                addLog('success', `Pipeline completed successfully in ${sec}s`);
-            } else {
-                addLog('warning', `Pipeline completed with partial results in ${sec}s`);
-            }
-            source.close();
-        });
-
-        source.addEventListener('result', e => {
-            const result = JSON.parse(e.data);
-            renderResults(result);
-            loadHistory();
-            btnScan.disabled = false;
-            updateScanButton();
-            source.close();
-        });
-
-        source.addEventListener('error', e => {
-            addLog('error', 'Connection to server lost');
-            source.close();
-            clearInterval(elapsedTimer);
-            btnScan.disabled = false;
-            updateScanButton();
-        });
-    }
-
-    // ═══ LOG ═══
-    function addLog(level, msg) {
-        const now = new Date();
-        const time = now.toTimeString().split(' ')[0];
-        const line = document.createElement('div');
-        line.className = `log-line ${level}`;
-        line.innerHTML = `<span class="time">[${time}]</span> <span class="msg">${escHtml(msg)}</span>`;
-        logArea.appendChild(line);
-        logArea.scrollTop = logArea.scrollHeight;
-    }
-
-    // ═══ RENDER RESULTS ═══
-    function renderResults(result) {
-        resultsSection.style.display = 'block';
-
-        // Face card
-        const face = result.face || {};
-        const cropUrl = face.face_crop_path ? `/output/${face.face_crop_path.split(/[\\\/]/).pop()}` : '';
-        $('face-crop-img').src = cropUrl;
-        $('face-crop-img').onerror = function() { this.style.display = 'none'; };
-
-        const quality = face.quality_score || 0;
-        const pose = face.pose || {};
-        const exif = face.exif || {};
-        const models = face.embeddings_computed || [];
-        const faceHash = face.face_hash || '—';
-
-        let faceHtml = '';
-        // Quality
-        faceHtml += `
-            <div class="detail-row">
-                <span class="detail-label">Quality</span>
-                <span class="detail-value">${quality.toFixed ? quality.toFixed(1) : quality}/100</span>
-            </div>
-            <div style="margin-bottom:10px;">
-                <div class="quality-bar-wrap"><div class="quality-bar" style="width:${quality}%"></div></div>
-            </div>`;
-        // Pose
-        faceHtml += `
-            <div class="detail-row">
-                <span class="detail-label">Pose</span>
-                <span class="detail-value">${pose.flag || 'unknown'} (yaw: ${pose.yaw || 0}, pitch: ${pose.pitch || 0})</span>
-            </div>`;
-        // Hash
-        faceHtml += `
-            <div class="detail-row">
-                <span class="detail-label">Face Hash</span>
-                <span class="hash-value" onclick="copyText('${faceHash}')" title="Click to copy">${truncHash(faceHash)}</span>
-            </div>`;
-        // EXIF
-        if (exif.camera_model) {
-            faceHtml += `<div class="detail-row"><span class="detail-label">Camera</span><span class="detail-value">${exif.camera_model}</span></div>`;
-        }
-        if (exif.was_edited) {
-            faceHtml += `<div class="detail-row"><span class="detail-label">Edited</span><span class="detail-value" style="color:var(--accent-amber)">⚠ Yes</span></div>`;
-        }
-        // Models
-        faceHtml += `<div style="margin-top:10px;"><div class="detail-label" style="margin-bottom:6px;">Models</div><div class="model-chips">${models.map(m => `<span class="model-chip">✓ ${m}</span>`).join('')}</div></div>`;
-
-        $('face-details').innerHTML = faceHtml;
-
-        // Search card
-        const search = result.search_results || {};
-        const best = search.best_match;
-        let searchHtml = '';
-
-        if (best && search.success) {
-            const score = best.composite_score || 0;
-            const circumference = 2 * Math.PI * 25;
-            const offset = circumference - (score * circumference);
-
-            searchHtml += `
-                <div class="score-ring">
-                    <svg width="60" height="60" viewBox="0 0 60 60">
-                        <circle class="bg" cx="30" cy="30" r="25"/>
-                        <circle class="fg" cx="30" cy="30" r="25"
-                            stroke-dasharray="${circumference}"
-                            stroke-dashoffset="${offset}"/>
-                    </svg>
-                    <div class="value">${(score * 100).toFixed(0)}%</div>
-                </div>
-                <div class="match-card-inner">
-                    <a href="${best.url}" target="_blank" class="match-url">${best.url}</a>
-                    <div><span class="match-platform">${best.platform || 'web'}</span></div>
-                </div>`;
-
-            // Engines
-            const engines = search.engines_queried || [];
-            const enginesWithResults = search.engines_with_results || [];
-            searchHtml += `<div class="detail-row"><span class="detail-label">Engines</span><span class="detail-value">${engines.map(e =>
-                `<span style="color:${enginesWithResults.includes(e) ? 'var(--accent-cyan)' : 'var(--text-muted)'}">${e}</span>`
-            ).join(', ')}</span></div>`;
-
-            searchHtml += `<div class="detail-row"><span class="detail-label">Candidates</span><span class="detail-value">${search.total_candidates || 0}</span></div>`;
-
-            // All candidates
-            const candidates = search.all_candidates || [];
-            if (candidates.length > 1) {
-                searchHtml += `<div style="margin-top:12px;"><details><summary style="cursor:pointer;font-size:12px;color:var(--text-muted);">All ${candidates.length} candidates</summary><div style="margin-top:8px;">`;
-                candidates.forEach(c => {
-                    searchHtml += `<div style="padding:4px 0;border-bottom:1px solid var(--border);font-size:12px;">
-                        <a href="${c.url}" target="_blank" style="color:var(--accent-blue);word-break:break-all;">${c.url.substring(0, 60)}...</a>
-                        <span style="color:var(--text-muted);margin-left:6px;">${c.platform || ''} · ${(c.composite_score || 0).toFixed(2)}</span>
-                    </div>`;
-                });
-                searchHtml += `</div></details></div>`;
-            }
-        } else {
-            searchHtml = `
-                <div class="no-match">
-                    <div class="emoji">🔒</div>
-                    <p>No public web presence found</p>
-                    <p class="subtle">Proof-of-scan recorded on blockchain</p>
-                </div>`;
-        }
-        $('search-details').innerHTML = searchHtml;
-
-        // Blockchain card
-        const bc = result.blockchain || {};
-        const verified = bc.verified || false;
-        let bcHtml = '';
-
-        bcHtml += `<div class="verified-badge ${verified ? 'success' : 'fail'}">
-            <span class="shield">${verified ? '🛡️' : '⚠️'}</span>
-            ${verified ? 'VERIFIED ON-CHAIN' : 'NOT VERIFIED'}
-        </div>`;
-
-        if (bc.payload_hash) {
-            bcHtml += `<div class="detail-row"><span class="detail-label">Payload Hash</span><span class="hash-value" onclick="copyText('${bc.payload_hash}')" title="Click to copy">${truncHash(bc.payload_hash)}</span></div>`;
-        }
-        if (bc.tx_hash) {
-            bcHtml += `<div class="detail-row"><span class="detail-label">TX Hash</span><span class="hash-value" onclick="copyText('${bc.tx_hash}')" title="Click to copy">${truncHash(bc.tx_hash)}</span></div>`;
-        }
-        if (bc.block_number) {
-            bcHtml += `<div class="detail-row"><span class="detail-label">Block</span><span class="detail-value">#${bc.block_number}</span></div>`;
-        }
-        if (bc.gas_used) {
-            bcHtml += `<div class="detail-row"><span class="detail-label">Gas Used</span><span class="detail-value">${bc.gas_used.toLocaleString ? bc.gas_used.toLocaleString() : bc.gas_used}</span></div>`;
-        }
-        if (bc.contract_address) {
-            bcHtml += `<div class="detail-row"><span class="detail-label">Contract</span><span class="hash-value" onclick="copyText('${bc.contract_address}')" title="Click to copy">${truncHash(bc.contract_address)}</span></div>`;
-            $('contract-badge').style.display = 'inline-flex';
-            $('contract-addr').textContent = truncHash(bc.contract_address);
-        }
-
-        const net = result.network || 'localhost';
-        bcHtml += `<div class="detail-row"><span class="detail-label">Network</span><span class="detail-value">${net}</span></div>`;
-
-        bcHtml += `<div class="immutable-note">This record is permanently stored on Ethereum and cannot be altered.</div>`;
-
-        $('blockchain-details').innerHTML = bcHtml;
-
-        // Scroll to results
-        setTimeout(() => {
-            resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 300);
-    }
-
-    // ═══ HISTORY ═══
-    async function loadHistory() {
-        try {
-            const res = await fetch('/api/history');
-            const history = await res.json();
-            const list = $('history-list');
-
-            if (history.length === 0) {
-                list.innerHTML = '<div class="empty-state">No scans yet. Run your first scan above!</div>';
-                return;
-            }
-
-            list.innerHTML = history.map(h => `
-                <div class="history-row" onclick="loadHistoryResult('${h.filename}')">
-                    <div class="history-file">${h.input_image}</div>
-                    <div class="history-platform">${h.platform || '—'}</div>
-                    <div class="history-network">${h.network}</div>
-                    <div class="history-status">
-                        <span class="status-dot ${h.success ? 'ok' : 'partial'}"></span>
-                        ${h.success ? 'Verified' : 'Partial'}
-                    </div>
-                </div>
-            `).join('');
-        } catch (e) {
-            $('history-list').innerHTML = '<div class="empty-state">Failed to load history</div>';
-        }
-    }
-
-    async function loadHistoryResult(filename) {
-        try {
-            const res = await fetch(`/api/result/${filename}`);
-            const result = await res.json();
-            renderResults(result);
-        } catch (e) {
-            toast('Failed to load result');
-        }
-    }
-
-    $('history-toggle').addEventListener('click', () => {
-        const list = $('history-list');
-        const arrow = $('history-arrow');
-        list.classList.toggle('open');
-        arrow.textContent = list.classList.contains('open') ? '▲' : '▼';
-    });
-
-    // ═══ HELPERS ═══
-    function truncHash(hash) {
-        if (!hash || hash.length < 16) return hash || '—';
-        return hash.substring(0, 10) + '...' + hash.substring(hash.length - 6);
-    }
-
-    function escHtml(str) {
-        const d = document.createElement('div');
-        d.textContent = str;
-        return d.innerHTML;
-    }
-
-    function copyText(text) {
-        navigator.clipboard.writeText(text).then(() => toast('Copied to clipboard'));
-    }
-
-    function toast(msg) {
-        const t = document.createElement('div');
-        t.className = 'toast';
-        t.textContent = msg;
-        document.body.appendChild(t);
-        setTimeout(() => t.remove(), 2600);
-    }
-    </script>
+function trunc(h){if(!h)return '—';return h.length<18?h:h.slice(0,10)+'…'+h.slice(-6);}
+function esc(s){const d=document.createElement('div');d.textContent=s==null?'':s;return d.innerHTML;}
+function cp(t){navigator.clipboard.writeText(t).then(()=>toast('Copied'));}
+function toast(m){const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.appendChild(t);setTimeout(()=>t.remove(),2200);}
+</script>
 </body>
 </html>

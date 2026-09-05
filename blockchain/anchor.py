@@ -52,12 +52,25 @@ def build_payload(
     exif_timestamp: Optional[str],
     wayback_first_seen: Optional[str],
     match_found: bool,
+    person_name: Optional[str] = None,
+    identity_verified: bool = False,
+    verification_score: float = 0.0,
+    matched_image_url: Optional[str] = None,
 ) -> dict:
-    """Builds the JSON payload that gets hashed and anchored."""
+    """Builds the JSON payload that gets hashed and anchored.
+
+    The SHA-256 of this exact JSON is what goes on-chain, so it captures not
+    just *that* content existed but *who* the pipeline identified, how it was
+    verified, and how confident it was — a self-describing forensic record.
+    """
     return {
         "face_hash":          face_hash,
         "content_hash":       content_hash,
         "source_url":         source_url,
+        "matched_image_url":  matched_image_url or "none",
+        "person_name":        person_name or "unidentified",
+        "identity_verified":  identity_verified,
+        "verification_score": round(verification_score, 4),
         "ensemble_score":     round(ensemble_score, 4),
         "engines_agreed":     engines_agreed,
         "platform":           platform,

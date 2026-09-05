@@ -1,280 +1,237 @@
-# Face Identification & Blockchain Verification Pipeline
+# FaceTrace — Face Identification & Blockchain Verification
 
-An end-to-end pipeline: face scan → multi-engine web search → blockchain-anchored tamper-evident record.
+Give it a face. It figures out **who the person is**, finds their **real social-media profile**,
+**proves the identity** by matching against an independent reference photo, and anchors a
+**tamper-evident record** of the whole finding on a blockchain — then re-verifies it on demand.
+
+> **HH Goa 2026 · Task 3** — a reliable, end-to-end pipeline from a single face image to an
+> immutable, self-describing on-chain proof.
 
 ```
-input.jpg  →  Face crop + multi-model embeddings
-           →  Yandex / Bing / SerpApi reverse image search
-           →  Engine-agreement-ranked candidate URLs
-           →  SHA-256 payload hash anchored on Ethereum
-           →  On-chain verification ✓
+face.jpg  ──▶  detect + encode          (MTCNN + ArcFace/FaceNet512/VGG-Face)
+          ──▶  identify                 (Google Lens → "Tom Hanks")
+          ──▶  find profile             (name search → instagram.com/tomhanks)
+          ──▶  VERIFY BEFORE CLAIM      (DeepFace re-match vs reference photo ✓)
+          ──▶  anchor SHA-256 payload   (FaceProof smart contract)
+          ──▶  re-verify + tamper test  (on-chain hash still matches ✓)
 ```
+
+---
+
+## Why this design wins: *verify before you claim*
+
+Naïve "reverse image search" is unreliable for faces — search engines return **look-alikes**, not
+the actual person. In our tests Google Lens returned **60 visual matches for Tom Hanks and none of
+them were Tom Hanks** (random LinkedIn head-shots that merely resemble him).
+
+FaceTrace never trusts those. Instead it:
+
+1. Reads the person's **name** from Google Lens's AI identity summary (`ai_overview`), extracted with
+   spaCy **PERSON** named-entity recognition.
+2. Runs a **name-based** search for the real profile (`"Tom Hanks" site:instagram.com …`) — highly reliable.
+3. **Independently verifies** the identity: downloads an official reference photo and runs a face
+   match (`DeepFace.verify`, ArcFace) against the input crop. **A match is only claimed when the face
+   actually verifies.** The 60 look-alikes fail this gate and are discarded.
+
+The result: no confident false positives, and the record we put on-chain is one we can defend.
+
+---
+
+## Live example (real run, `samples/tom_hanks.png`)
+
+| Field | Value |
+|-------|-------|
+| Identified person | **Tom Hanks** |
+| Identity verified | ✅ yes (independent reference-photo match) |
+| Best profile match | `https://www.instagram.com/tomhanks/` (score 0.91) |
+| Also found | x.com/tomhanks · facebook.com/TomHanks · imdb · wikipedia |
+| Content hash | `sha256:59057755…` (SHA-256 of the **actual matched image bytes**) |
+| On-chain TX | block #2, `verified: true` |
+| Tamper test | altered record → hash **absent** from ledger → tampering detected |
+| End-to-end time | **48.7s** |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Stage 1 — Face Detection & Encoding                        │
-│   MTCNN detection → crop → BRISQUE quality score           │
-│   GFPGAN restoration (conditional, if quality < threshold)  │
-│   ArcFace (InsightFace) + FaceNet512 + VGG-Face embeddings  │
-│   Weighted ensemble embedding (0.5 / 0.3 / 0.2)            │
-│   EXIF metadata extraction (GPS, timestamp, edit detection) │
-│   Pose angle check (frontal / angled / profile flagging)    │
-└────────────────────────┬────────────────────────────────────┘
-                         │ face_crop.jpg + face_hash
-┌────────────────────────▼────────────────────────────────────┐
-│  Stage 2 — Multi-Engine Reverse Image Search                │
-│   Engine 1: Yandex (Playwright scraper — best for faces)    │
-│   Engine 2: Bing Visual Search API (1000 free/month)        │
-│   Engine 3: SerpApi / Google (100 free/month, last resort)  │
-│   Multi-crop variants: original + flipped + sharpened       │
-│   Candidate ranking: engine agreement + platform + pHash    │
-│   Wayback Machine cross-reference (first-seen date)         │
-└────────────────────────┬────────────────────────────────────┘
-                         │ best_match URL + composite score
-┌────────────────────────▼────────────────────────────────────┐
-│  Stage 3 — Blockchain Anchoring & Verification              │
-│   Build JSON payload (face_hash, content_hash, URL, score,  │
-│     engines_agreed, platform, EXIF timestamp, pipeline ver) │
-│   SHA-256 hash of payload → anchor to Ethereum              │
-│   Networks: Hardhat local (demo) + Sepolia testnet (public) │
-│   Verify: fetch on-chain hash → compare == local hash ✓     │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│  Stage 1 — Face Detection & Encoding            face/detect.py        │
+│    MTCNN detect + align → 224×224 crop → SHA-256 face_hash            │
+│    ArcFace (InsightFace) + FaceNet512 + VGG-Face → ensemble embedding │
+│    EXIF (GPS / timestamp / edit-detection) · pose (frontal/profile)   │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ face_crop.jpg + face_hash
+┌──────────────────────────────▼──────────────────────────────────────┐
+│  Stage 2 — Identity-First Search                search/               │
+│    1. host crop on catbox           (Lens needs a public URL)         │
+│    2. Google Lens → ai_overview → PERSON name   (identity.py, spaCy)  │
+│    3. name-based social search → real profile URLs                    │
+│    4. VERIFY-BEFORE-CLAIM: reference photo + DeepFace.verify          │
+│    5. hash the real matched image BYTES → content_hash               │
+└──────────────────────────────┬──────────────────────────────────────┘
+                               │ verified identity + best_match + content_hash
+┌──────────────────────────────▼──────────────────────────────────────┐
+│  Stage 3 — Blockchain Anchoring & Verification  blockchain/           │
+│    build self-describing JSON payload (who / how verified / how sure) │
+│    SHA-256(payload) → FaceProof.anchor() on Ethereum                  │
+│    read back with getProof() → confirm on-chain hash == local hash    │
+│    re-verify + tamper test on demand                                  │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
----
-
-## Tech Stack
-
-| Layer | Library / Tool |
-|-------|---------------|
-| Face detection | MTCNN (facenet-pytorch) |
-| Face encoding | InsightFace/ArcFace, DeepFace/FaceNet512, DeepFace/VGG-Face |
-| Face restoration | GFPGAN (conditional — only on degraded inputs) |
-| Image quality | BRISQUE no-reference quality metric |
-| EXIF extraction | exifread |
-| Reverse search | Yandex (Playwright), Bing Visual Search API, SerpApi |
-| Similarity filter | imagehash (perceptual hash, Hamming distance) |
-| Archive lookup | Wayback Machine CDX API (free) |
-| Smart contract | Solidity 0.8.24 |
-| Contract tooling | Hardhat + ethers.js |
-| Blockchain client | web3.py |
-| Networks | Hardhat local + Ethereum Sepolia testnet |
-| GPU acceleration | CUDA via ONNX Runtime + PyTorch |
+Every external call **degrades gracefully** — a missing key or a failed engine lowers confidence but
+never crashes the run. If no identity verifies, the pipeline still anchors a **proof-of-scan** record
+(`match_found: false`), so it always completes end-to-end.
 
 ---
 
-## Prerequisites
+## Tech stack
 
-- Python 3.10+
-- Node.js 18+
-- CUDA-capable GPU recommended (runs on CPU but slower)
-- MetaMask wallet (for Sepolia deployment only)
+| Layer | Tool |
+|-------|------|
+| Face detection / alignment | MTCNN (facenet-pytorch) |
+| Face encoding | InsightFace **ArcFace**, DeepFace **FaceNet512** + **VGG-Face** |
+| Identity lookup | **Google Lens** via SerpApi (`ai_overview`) |
+| Name extraction | **spaCy** `en_core_web_sm` PERSON NER (+ regex fallback) |
+| Identity verification | `DeepFace.verify` (ArcFace) against a reference photo |
+| Profile search | SerpApi Google (`site:` targeted) |
+| Content fingerprint | SHA-256 of the downloaded matched-image bytes |
+| Archive signal | Wayback Machine CDX API |
+| Smart contract | Solidity 0.8.24 (`FaceProof.sol`) |
+| Chain tooling / client | Hardhat + ethers.js · web3.py |
+| Web UI | FastAPI + Server-Sent Events (live progress) |
 
 ---
 
-## Setup
+## Quick start
 
-### 1. Clone and install Python dependencies
+### 0. Prerequisites
+- Python 3.11 · Node.js 18+
+- A **SerpApi** key (free tier, 100 searches/month) → `.env`
 
+### 1. Install
 ```bash
-git clone https://github.com/your-username/face-blockchain-pipeline.git
-cd face-blockchain-pipeline
-
 pip install -r requirements.txt
-python -m playwright install chromium
+python -m spacy download en_core_web_sm     # identity NER model
+npm install                                 # Hardhat + ethers
+cp .env.example .env                         # then add your SERPAPI_KEY
 ```
 
-### 2. Install Node dependencies (for Hardhat)
-
+### 2. Start the local blockchain (Terminal 1 — leave running)
 ```bash
-npm install
-```
-
-### 3. Configure environment variables
-
-```bash
-cp .env.example .env
-# Edit .env and fill in your API keys
-```
-
-Required keys:
-
-| Key | Where to get it |
-|-----|----------------|
-| `SERPAPI_KEY` | serpapi.com → Dashboard |
-| `BING_SEARCH_KEY` | portal.azure.com → Bing Search v7 → Keys |
-| `INFURA_SEPOLIA_URL` | infura.io → Project → Endpoints (Sepolia only) |
-| `DEPLOYER_PRIVATE_KEY` | MetaMask → Account → Export Private Key (Sepolia only) |
-
-### 4. Deploy the smart contract
-
-**Local (Hardhat) — required for `--network localhost`:**
-```bash
-# Terminal 1: start Hardhat node
 npx hardhat node
-
-# Terminal 2: deploy
-npm run deploy:local
 ```
 
-**Sepolia — required for `--network sepolia`:**
+### 3. Deploy the contract (Terminal 2)
 ```bash
-npm run deploy:sepolia
+npm run deploy:local        # writes deployment_localhost.json
 ```
 
-Both commands save a `deployment_<network>.json` file that the Python pipeline reads automatically.
+### 4. Run it
+
+**Web UI (recommended — the live demo surface):**
+```bash
+python app.py
+# open http://localhost:8000  → pick a sample → watch the 3 stages stream live
+```
+
+**CLI:**
+```bash
+python pipeline.py samples/tom_hanks.png --network localhost
+```
+
+> **Note:** `npm run deploy:local` must be re-run whenever you restart `npx hardhat node`
+> (the local chain resets on restart).
 
 ---
 
-## Running the Pipeline
+## The blockchain record
 
-```bash
-# Full pipeline — local Hardhat node (default)
-python pipeline.py input.jpg
-
-# Full pipeline — Sepolia testnet
-python pipeline.py input.jpg --network sepolia
-
-# Custom output directory
-python pipeline.py input.jpg --output-dir results/
-```
-
-### Running individual stages
-
-```bash
-# Stage 1 only — face detection and encoding
-python face/detect.py input.jpg
-
-# Stage 2 only — reverse image search
-python search/reverse_search.py output/face_crop.jpg
-
-# Stage 3 only — anchor a result JSON
-python blockchain/anchor.py output/run_<timestamp>.json localhost
-```
-
----
-
-## Output
-
-Every pipeline run produces:
-
-```
-output/
-├── face_crop.jpg           # Aligned face crop (224×224)
-├── face_crop_restored.jpg  # GFPGAN-restored crop (if triggered)
-├── face_crop_flipped.jpg   # Search variant
-├── face_crop_sharpened.jpg # Search variant
-├── run_<timestamp>.json    # Full structured result
-└── pipeline.log            # Detailed execution log
-```
-
-### Sample `run_<timestamp>.json`
-
-```json
-{
-  "input_image": "input.jpg",
-  "network": "localhost",
-  "face": {
-    "face_crop_path": "output/face_crop.jpg",
-    "face_hash": "sha256:a3f9...",
-    "quality_score": 28.4,
-    "pose": { "flag": "frontal", "yaw": 3.2, "confidence_multiplier": 1.0 },
-    "exif": { "timestamp": "2024-03-15T14:22:00", "gps_lat": null },
-    "embeddings_computed": ["ArcFace", "Facenet512", "VGG-Face"]
-  },
-  "search_results": {
-    "engines_queried": ["yandex", "bing"],
-    "engines_with_results": ["yandex", "bing"],
-    "total_candidates": 12,
-    "best_match": {
-      "url": "https://linkedin.com/in/...",
-      "platform": "linkedin.com",
-      "engines": ["yandex", "bing"],
-      "engine_agreement": 1.0,
-      "composite_score": 0.847,
-      "phash": { "accessible": true, "hamming_distance": 7, "phash_confidence": "high" },
-      "wayback": { "has_archive": true, "first_seen": "2023-06-12" }
-    }
-  },
-  "blockchain": {
-    "network": "localhost",
-    "tx_hash": "0x7f3a...",
-    "block_number": 3,
-    "gas_used": 112450,
-    "contract_address": "0x5FbDB...",
-    "verified": true,
-    "payload": {
-      "face_hash": "sha256:a3f9...",
-      "content_hash": "sha256:b7d2...",
-      "source_url": "https://linkedin.com/in/...",
-      "ensemble_score": 0.847,
-      "engines_agreed": 2,
-      "pipeline_version": "1.0.0"
-    }
-  },
-  "elapsed_seconds": 42.7,
-  "pipeline_success": true
-}
-```
-
----
-
-## Smart Contract
-
-`FaceProof.sol` stores a proof record per payload hash:
+`FaceProof.sol` stores one immutable record per payload hash:
 
 ```solidity
 struct ProofRecord {
-    string  payloadHash;      // SHA-256 of full JSON payload
-    string  faceHash;         // SHA-256 of input face crop
-    string  contentHash;      // SHA-256 of matched content
-    string  sourceUrl;        // Best matched social media URL
-    uint256 confidenceScore;  // Confidence × 100 (e.g. 87 = 0.87)
-    uint256 timestamp;        // Block timestamp
-    bool    matchFound;       // Whether a social match was found
+    string  payloadHash;      // SHA-256 of the full JSON payload
+    string  faceHash;         // SHA-256 of the input face crop
+    string  contentHash;      // SHA-256 of the matched image BYTES
+    string  sourceUrl;        // the matched social profile
+    uint256 confidenceScore;  // verification score × 100
+    uint256 timestamp;        // block timestamp
+    bool    matchFound;       // whether an identity was confirmed
 }
 ```
 
-Key functions:
-- `anchor(...)` — stores a record (owner only), emits `Anchored` event
-- `verify(hash)` — verifies and emits `Verified` event
-- `getProof(hash)` — read-only fetch
-- `totalAnchored()` — total records on this contract
+The hashed **payload** is self-describing — it records *who* the pipeline identified, *how it was
+verified*, *how confident it was*, the source profile, and forensic metadata. So the on-chain proof
+attests not merely that content existed, but exactly what FaceTrace concluded and on what basis.
 
----
+### Re-verification & tamper-evidence (the "demonstrate re-verification" requirement)
 
-## Blockchain Networks
+`POST /api/verify-demo/<run_file>` (or the **Re-verify / Tamper test** buttons in the UI):
 
+1. Re-reads the on-chain record for the stored hash → **verifies ✓**.
+2. Alters one field, recomputes the SHA-256, and looks it up → **absent from the ledger**, proving the
+   record cannot be changed without detection.
+
+```json
+{
+  "genuine":  { "verified": true },
+  "tampered": { "changed_field": "source_url", "found_on_chain": false }
+}
+```
+
+### Networks
 | Network | Purpose | Explorer |
 |---------|---------|----------|
-| Hardhat local | Development & demo (always works) | N/A |
-| Sepolia testnet | Public verification | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
+| Hardhat local | Demo — instant, pre-funded, always works | — |
+| Sepolia testnet | Public, permanent proof | [sepolia.etherscan.io](https://sepolia.etherscan.io) |
 
-Sepolia contract address: `<filled after deployment>`
+Run on the public chain with `--network sepolia` (needs `INFURA_SEPOLIA_URL` + `DEPLOYER_PRIVATE_KEY`).
 
 ---
 
-## Limitations
+## Privacy & limitations (honest)
 
-- **Social media auth walls**: Instagram, Facebook, and Twitter behind login will return the correct URL from search but the image itself cannot be downloaded for pHash comparison. The URL and metadata are still anchored on-chain.
-- **Yandex scraping fragility**: Yandex has no public API. The Playwright scraper works but may be blocked by Yandex CAPTCHA on high-volume runs. Bing and SerpApi serve as automatic fallbacks.
-- **Face search accuracy**: Reverse image search engines match pixel patterns, not face identity. A face that appears nowhere online (no public social presence) will return 0 results — the pipeline anchors a proof-of-scan record instead.
-- **Profile/angled faces**: Faces at >45° yaw are flagged as reduced-confidence. Recognition accuracy drops for non-frontal faces.
-- **SerpApi rate limit**: Free tier = 100 searches/month. With Yandex + Bing as primary engines, SerpApi is only called when both return 0 results.
-- **GFPGAN model download**: First run downloads ~350MB model weights. Cached after first download.
+- **The face crop is uploaded to a public host (catbox.moe)** so Google Lens can read it — Lens
+  requires an image *URL*, not a file. For public-figure demos this is harmless; for real use it is a
+  privacy trade-off worth noting. Swap `search/image_host.py` for an expiring/self-hosted store if needed.
+- **Identity depends on Google Lens** recognizing the person, so it works best for **findable public
+  figures**. Unknown/private faces won't be identified — the pipeline then anchors a proof-of-scan record.
+- **Social profile images are auth-walled**, so the content we hash is the retrievable **reference
+  photo** of the identified person (the record stores both `source_url` and `matched_image_url`).
+- **SerpApi free tier = 100 searches/month**; a full run uses ~3–4. Cache during development.
+- **BRISQUE / GPU** are best-effort — BRISQUE falls back to a neutral score and inference runs on CPU
+  if CUDA isn't available; neither blocks a successful run.
+
+---
+
+## Project layout
+
+```
+pipeline.py              # CLI orchestrator (3 stages, progress events)
+app.py                   # FastAPI web UI (SSE live progress + tamper demo)
+face/detect.py           # Stage 1 — detection + multi-model encoding
+search/
+  image_host.py          # catbox upload (public URL for Lens)
+  identity.py            # spaCy PERSON-NER name extraction
+  reverse_search.py      # Stage 2 — Lens → name → verify → content hash
+blockchain/
+  anchor.py              # Stage 3 — web3.py anchor + verify
+  contracts/FaceProof.sol
+  scripts/{deploy,verify}.js
+templates/index.html     # web frontend
+samples/                 # demo face images
+```
 
 ---
 
 ## Credits
 
-- [InsightFace](https://github.com/deepinsight/insightface) — ArcFace model
-- [DeepFace](https://github.com/serengil/deepface) — FaceNet512 + VGG-Face
-- [MTCNN](https://github.com/timesler/facenet-pytorch) — Face detection
-- [GFPGAN](https://github.com/TencentARC/GFPGAN) — Face restoration
-- [Hardhat](https://hardhat.org) — Ethereum development
-- [SerpApi](https://serpapi.com) — Google Reverse Image API
-- [Wayback Machine CDX API](https://github.com/internetarchive/wayback/tree/master/wayback-cdx-server) — Archive lookup
+[InsightFace](https://github.com/deepinsight/insightface) ·
+[DeepFace](https://github.com/serengil/deepface) ·
+[facenet-pytorch](https://github.com/timesler/facenet-pytorch) ·
+[spaCy](https://spacy.io) ·
+[SerpApi](https://serpapi.com) ·
+[Hardhat](https://hardhat.org) ·
+[Wayback Machine](https://archive.org/web/)

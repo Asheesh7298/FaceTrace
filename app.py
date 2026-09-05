@@ -54,6 +54,42 @@ app.mount("/samples", StaticFiles(directory="samples"), name="samples")
 scans: dict[str, dict] = {}
 
 
+def _warmup():
+    """Preload heavy models so the FIRST live scan isn't the slow one."""
+    import logging
+    log = logging.getLogger("warmup")
+    try:
+        log.info("Warming up models…")
+        import numpy as np
+        from PIL import Image
+        # a tiny dummy face image
+        dummy = Path("output") / "_warmup.jpg"
+        Image.fromarray((np.random.rand(160, 160, 3) * 255).astype("uint8")).save(dummy)
+        try:
+            from face.detect import detect_and_encode
+            detect_and_encode(str(dummy), output_dir="output")
+        except Exception:
+            pass
+        try:
+            from search.identity import _get_nlp
+            _get_nlp()  # load spaCy
+        except Exception:
+            pass
+        try:
+            from search.curated_db import load_index
+            load_index()  # warm the index file
+        except Exception:
+            pass
+        log.info("Warm-up complete ✓")
+    except Exception as e:
+        log.warning(f"Warm-up skipped: {e}")
+
+
+@app.on_event("startup")
+async def _on_start():
+    threading.Thread(target=_warmup, daemon=True).start()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = Path(__file__).parent / "templates" / "index.html"
@@ -212,6 +248,62 @@ async def get_result(filename: str):
         raise HTTPException(status_code=404, detail="Result not found")
     data = json.loads(filepath.read_text(encoding="utf-8"))
     return data
+
+
+@app.post("/api/verify-demo/{filename}")
+async def verify_demo(filename: str):
+    """
+    Re-verification + tamper demonstration for a past run.
+
+    1. Re-reads the on-chain record for the stored payload hash  -> should VERIFY.
+    2. Mutates one payload field, recomputes the hash, and looks it up on-chain
+       -> should be NOT FOUND, proving the record is tamper-evident.
+    """
+    import json as _json
+    from blockchain.anchor import BlockchainAnchor, sha256_of_str
+
+    filepath = Path("output") / filename
+    if not filepath.exists():
+        raise HTTPException(status_code=404, detail="Result not found")
+
+    data = _json.loads(filepath.read_text(encoding="utf-8"))
+    bc = data.get("blockchain", {})
+    payload = bc.get("payload")
+    payload_hash = bc.get("payload_hash")
+    network = data.get("network", "localhost")
+
+    if not payload or not payload_hash:
+        raise HTTPException(status_code=400, detail="Run has no anchored payload")
+
+    try:
+        client = BlockchainAnchor(network=network)
+
+        # 1. Genuine record — must verify
+        genuine = client.verify(payload_hash)
+
+        # 2. Tamper: alter one field, recompute hash, look it up
+        tampered = dict(payload)
+        tampered["source_url"] = (payload.get("source_url", "") or "") + "/tampered"
+        tampered_json = _json.dumps(tampered, sort_keys=True)
+        tampered_hash = sha256_of_str(tampered_json)
+        tampered_lookup = client.verify(tampered_hash)
+
+        return {
+            "network": network,
+            "genuine": {
+                "payload_hash": payload_hash,
+                "verified": genuine.get("verified", False),
+                "on_chain_confidence": genuine.get("confidence"),
+                "anchored_at": genuine.get("anchored_at"),
+            },
+            "tampered": {
+                "changed_field": "source_url",
+                "tampered_hash": tampered_hash,
+                "found_on_chain": tampered_lookup.get("verified", False),
+            },
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Verification failed: {e}")
 
 
 @app.get("/api/samples")

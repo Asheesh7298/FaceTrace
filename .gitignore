@@ -34,6 +34,10 @@ gfpgan/weights/
 *.pth
 *.onnx
 
+# Curated DB: keep the built .npz + meta (reproducible), skip temp + stale local json
+face_db/_tmp_ref.jpg
+face_db/curated_index.json
+
 # Logs
 *.log
 
