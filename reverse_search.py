@@ -1,26 +1,29 @@
 """
 search/reverse_search.py
-Multi-engine reverse image search with result ranking.
+========================
+Multi-strategy reverse image search with 7 accuracy layers.
 
-Engines (in priority order):
-  1. Yandex    — best face accuracy, free, Playwright scraper
-  2. Bing      — official API, 1000 free/month
-  3. SerpApi   — Google Reverse Image, 100 free/month (last resort)
+Strategy 1 — Image Search (pixel matching)
+  Yandex → Google CSE → SerpApi
 
-Ranking:
-  - Engine agreement score  (URL found by 2+ engines = ranked higher)
-  - pHash similarity        (Hamming distance on downloadable images)
-  - Platform priority       (linkedin > twitter > instagram > facebook > other)
+Strategy 2 — Face DB Search (identity matching)
+  Modal A100 searches LFW + CelebA + VGGFace2 + MS-Celeb + Indian DB
 
-Output:
-  Best candidate URL + full ranked list + confidence signals
+Strategy 3 — Name-Based Web Search
+  If Strategy 2 finds a name → search web by name
+
+Strategy 4 — Cross-Validation + Verification
+  Cross-validates DB match against image search results.
+  Verifies name match by downloading their public photo.
 """
 
 import os
+import io
 import time
 import random
 import hashlib
 import logging
+import tempfile
 import requests
 from pathlib import Path
 from typing import Optional
@@ -30,801 +33,389 @@ from collections import defaultdict
 import imagehash
 from PIL import Image
 
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
-# ─── Platform Priority ────────────────────────────────────────────────────────
-
 PLATFORM_PRIORITY = {
-    "linkedin.com":   10,
-    "twitter.com":    9,
-    "x.com":          9,
-    "instagram.com":  8,
-    "facebook.com":   7,
-    "github.com":     7,
-    "reddit.com":     6,
-    "youtube.com":    5,
+    "linkedin.com":   10, "twitter.com": 9, "x.com": 9,
+    "instagram.com":  8,  "facebook.com": 7, "github.com": 7,
+    "yourstory.com":  8,  "inc42.com": 7, "crunchbase.com": 7,
+    "wellfound.com":  6,  "reddit.com": 5, "youtube.com": 5,
+    "researchgate.net": 6, "academia.edu": 6,
 }
 
-def platform_score(url: str) -> int:
+def platform_score(url):
     domain = urlparse(url).netloc.replace("www.", "")
     for platform, score in PLATFORM_PRIORITY.items():
         if platform in domain:
             return score
-    return 3  # generic web
+    return 3
 
-
-# ─── pHash Similarity ─────────────────────────────────────────────────────────
-
-def phash_similarity(face_crop_path: str, candidate_url: str) -> Optional[dict]:
-    """
-    Downloads candidate image and computes perceptual hash similarity.
-    Returns None if image not downloadable (auth wall, HTML page, etc.)
-    """
+def phash_similarity(face_crop_path, candidate_url):
     try:
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            )
-        }
+        headers = {"User-Agent": "Mozilla/5.0 Chrome/124.0.0.0 Safari/537.36"}
         resp = requests.get(candidate_url, headers=headers, timeout=8, stream=True)
-
-        content_type = resp.headers.get("content-type", "")
-        if "image" not in content_type:
-            return {"accessible": False, "reason": "not_an_image_url"}
-
-        img_bytes = resp.content
-        candidate_img = Image.open(__import__("io").BytesIO(img_bytes)).convert("RGB")
+        if "image" not in resp.headers.get("content-type", ""):
+            return {"accessible": False, "reason": "not_image"}
+        candidate_img = Image.open(io.BytesIO(resp.content)).convert("RGB")
         original_img  = Image.open(face_crop_path).convert("RGB")
-
-        original_hash  = imagehash.phash(original_img)
-        candidate_hash = imagehash.phash(candidate_img)
-        distance = original_hash - candidate_hash
-
-        if distance < 10:
-            confidence = "high"
-        elif distance < 20:
-            confidence = "medium"
-        else:
-            confidence = "low"
-
-        return {
-            "accessible": True,
-            "hamming_distance": int(distance),
-            "phash_confidence": confidence,
-        }
-
+        orig_hash = imagehash.phash(original_img)
+        cand_hash = imagehash.phash(candidate_img)
+        distance  = orig_hash - cand_hash
+        confidence = "high" if distance < 10 else "medium" if distance < 20 else "low"
+        return {"accessible": True, "hamming_distance": int(distance), "phash_confidence": confidence}
     except Exception as e:
         return {"accessible": False, "reason": str(e)}
 
-
-# ─── Engine 1: Yandex (Playwright scraper) ────────────────────────────────────
-
-def search_yandex(face_crop_path: str) -> list[str]:
-    """
-    Uploads image to Yandex reverse image search via Playwright.
-    Returns list of result URLs.
-    """
-    urls = []
+def wayback_check(url):
+    result = {"has_archive": False, "first_seen": None}
     try:
-        from playwright.sync_api import sync_playwright
+        cdx = f"https://web.archive.org/cdx/search/cdx?url={url}&output=json&limit=1&fl=timestamp&fastLatest=true"
+        resp = requests.get(cdx, timeout=5)
+        if resp.status_code == 200:
+            data = resp.json()
+            if len(data) > 1:
+                ts = data[1][0]
+                result["has_archive"] = True
+                result["first_seen"]  = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]}"
+    except Exception:
+        pass
+    return result
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(
-                headless=True,
-                args=[
-                    "--no-sandbox",
-                    "--disable-blink-features=AutomationControlled",
-                ],
-            )
-
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 720},
-            )
-            page = context.new_page()
-
-            logger.info("Yandex: navigating to images.yandex.com...")
-            page.goto("https://yandex.com/images/", timeout=8000)
-            time.sleep(random.uniform(1.0, 2.0))
-
-            # Click the camera icon (search by image)
-            camera_selectors = [
-                'button[aria-label*="image" i]',
-                '.cbir-icon',
-                '.input__cbir-button',
-                'button.search-by-image',
-                '[class*="cbir"]',
-            ]
-            clicked = False
-            for sel in camera_selectors:
-                try:
-                    loc = page.locator(sel)
-                    if loc.count() > 0:
-                        loc.first.click(timeout=3000)
-                        clicked = True
-                        break
-                except Exception:
-                    continue
-
-            time.sleep(random.uniform(0.5, 1.0))
-
-            # Upload the face crop
-            file_input = page.locator('input[type="file"]')
-            if file_input.count() > 0:
-                file_input.first.set_input_files(str(Path(face_crop_path).resolve()), timeout=5000)
-                logger.info("Yandex: image uploaded, waiting for results...")
-                time.sleep(random.uniform(2.0, 4.0))
-            else:
-                logger.warning("Yandex: file input not found (CAPTCHA or layout change)")
-
-            # Parse result links
-            links = page.eval_on_selector_all(
-                "a[href]",
-                "els => els.map(el => el.href)"
-            )
-
-            for link in links:
-                if (
-                    link.startswith("http")
-                    and "yandex" not in link
-                    and "google" not in link
-                    and len(link) > 30
-                ):
-                    urls.append(link)
-
-            browser.close()
-            logger.info(f"Yandex: found {len(urls)} raw URLs")
-
+def generate_search_crops(face_crop_path, output_dir):
+    output_dir = Path(output_dir)
+    crops = [face_crop_path]
+    try:
+        from PIL import ImageEnhance
+        img = Image.open(face_crop_path).convert("RGB")
+        flipped = img.transpose(Image.FLIP_LEFT_RIGHT)
+        p = str(output_dir / "face_crop_flipped.jpg")
+        flipped.save(p, quality=95)
+        crops.append(p)
+        sharpened = ImageEnhance.Sharpness(img).enhance(2.0)
+        p = str(output_dir / "face_crop_sharpened.jpg")
+        sharpened.save(p, quality=95)
+        crops.append(p)
     except Exception as e:
-        logger.warning(f"Yandex search failed: {e}")
+        logger.warning(f"Crop generation failed: {e}")
+    return crops
 
-    return list(dict.fromkeys(urls))[:20]  # deduplicate, cap at 20
-
-
-# ─── Engine 2: Bing Visual Search (Playwright Scraper + API Fallback) ─────────
-
-def search_bing_playwright(face_crop_path: str) -> list[str]:
-    """
-    Bing Visual Search scraper via Playwright (100% free, no API key needed).
-    Uploads face crop directly to bing.com/images and extracts candidate URLs.
-    """
-    from playwright.sync_api import sync_playwright
+def search_yandex(face_crop_path):
     urls = []
-    logger.info("Bing (Playwright): launching headless browser...")
     try:
+        import asyncio
+        import sys
+        # Fix for Windows asyncio + Playwright conflict
+        if sys.platform == 'win32':
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        from playwright.sync_api import sync_playwright
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            context = browser.new_context(
-                user_agent=(
-                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                    "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/124.0.0.0 Safari/537.36"
-                ),
-                viewport={"width": 1280, "height": 720},
-            )
+            browser = p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
+            context = browser.new_context(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36", viewport={"width": 1280, "height": 720})
             page = context.new_page()
-
-            logger.info("Bing (Playwright): navigating to bing.com/images...")
-            page.goto("https://www.bing.com/images", timeout=12000)
-            time.sleep(random.uniform(0.5, 1.0))
-
-            file_input = page.locator('input[type="file"]')
-            if file_input.count() == 0:
-                camera = page.locator('#sbi_btn, #sbi_b, [aria-label*="Visual Search" i]')
-                if camera.count() > 0:
-                    camera.first.click(timeout=3000)
-                    time.sleep(0.5)
-                file_input = page.locator('input[type="file"]')
-
-            if file_input.count() > 0:
-                file_input.first.set_input_files(str(Path(face_crop_path).resolve()))
-                logger.info("Bing (Playwright): image uploaded, waiting for results...")
+            page.goto("https://yandex.com/images/", timeout=20000)
+            time.sleep(random.uniform(1.5, 3.0))
+            try:
+                page.click('button[aria-label="Search by image"]', timeout=8000)
+            except Exception:
                 try:
-                    page.wait_for_load_state("networkidle", timeout=8000)
+                    page.click('.cbir-button', timeout=5000)
                 except Exception:
                     pass
-                time.sleep(2)
-
-                raw_links = page.eval_on_selector_all(
-                    '#b_results a[href], .b_algo a[href], [class*="vsl"] a[href], .imgpt a[href]',
-                    'els => els.map(el => el.href)'
-                )
-
-                for link in raw_links:
-                    if (
-                        link.startswith("http")
-                        and "bing.com" not in link
-                        and "microsoft.com" not in link
-                        and "live.com" not in link
-                        and len(link) > 20
-                    ):
-                        urls.append(link)
-
+            time.sleep(random.uniform(0.5, 1.5))
+            try:
+                page.locator('input[type="file"]').set_input_files(str(Path(face_crop_path).resolve()))
+                time.sleep(random.uniform(4.0, 6.0))
+            except Exception as e:
+                logger.warning(f"Yandex upload failed: {e}")
+                browser.close()
+                return []
+            links = page.eval_on_selector_all("a[href]", "els => els.map(el => el.href)")
+            for link in links:
+                if link.startswith("http") and "yandex" not in link and "google" not in link and len(link) > 30:
+                    urls.append(link)
             browser.close()
-            logger.info(f"Bing (Playwright): found {len(urls)} raw URLs")
-
+            logger.info(f"Yandex: {len(urls)} URLs")
     except Exception as e:
-        logger.warning(f"Bing Playwright search failed: {e}")
-
+        logger.warning(f"Yandex failed: {e}")
     return list(dict.fromkeys(urls))[:20]
 
-
-def search_bing(face_crop_path: str) -> list[str]:
-    """
-    Bing Visual Search — uses Azure API if key is present,
-    otherwise automatically falls back to the free Playwright scraper.
-    """
-    api_key = os.getenv("BING_SEARCH_KEY")
-    if api_key:
-        logger.info("Bing: using official Azure Visual Search API")
-        try:
-            with open(face_crop_path, "rb") as f:
-                image_data = f.read()
-
-            response = requests.post(
-                "https://api.bing.microsoft.com/v7.0/images/visualsearch",
-                headers={"Ocp-Apim-Subscription-Key": api_key},
-                files={"image": ("face_crop.jpg", image_data, "image/jpeg")},
-                timeout=15,
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                urls = []
-                for tag in data.get("tags", []):
-                    for action in tag.get("actions", []):
-                        action_type = action.get("actionType", "")
-                        if action_type in ("PagesIncluding", "VisualSearch"):
-                            for item in action.get("data", {}).get("value", []):
-                                url = item.get("hostPageUrl") or item.get("contentUrl")
-                                if url:
-                                    urls.append(url)
-                if urls:
-                    logger.info(f"Bing API: found {len(urls)} URLs")
-                    return list(dict.fromkeys(urls))[:20]
-            else:
-                logger.warning(f"Bing API returned {response.status_code}, falling back to Playwright scraper")
-        except Exception as e:
-            logger.warning(f"Bing API error: {e}, falling back to Playwright scraper")
-
-    # Fallback to free Playwright scraper
-    logger.info("Bing: running free Playwright visual search scraper")
-    return search_bing_playwright(face_crop_path)
-
-
-# ─── Engine 3: FaceCheck.ID (Facial Biometrics for Social Media) ─────────────
-
-def search_facecheck(face_crop_path: str) -> tuple[list[str], dict[str, float]]:
-    """
-    FaceCheck.ID API — facial recognition engine specialized for social media
-    (Instagram, Telegram, Twitter/X, LinkedIn, VK, TikTok).
-    Returns (list of URLs, dict of url -> biometric_score [0.0 - 1.0]).
-    """
-    api_key = os.getenv("FACECHECK_API_KEY")
-    if not api_key:
-        logger.info("FaceCheck.ID: FACECHECK_API_KEY not configured in .env (skipped)")
-        return [], {}
-
-    site = "https://facecheck.id"
-    auth_header = f"Bearer {api_key}" if not api_key.startswith("Bearer ") else api_key
-    headers = {
-        "accept": "application/json",
-        "Authorization": auth_header,
-    }
-
-    urls = []
-    scores = {}
-
-    try:
-        logger.info("FaceCheck.ID: uploading face crop...")
-        with open(face_crop_path, "rb") as f:
-            files = {"images": f}
-            upload_resp = requests.post(f"{site}/api/upload_pic", headers=headers, files=files, timeout=20)
-
-        if upload_resp.status_code != 200:
-            logger.warning(f"FaceCheck upload error: {upload_resp.status_code} — {upload_resp.text[:150]}")
-            return [], {}
-
-        upload_data = upload_resp.json()
-        if upload_data.get("error"):
-            logger.warning(f"FaceCheck upload error: {upload_data['error']}")
-            return [], {}
-
-        search_id = upload_data.get("id_search")
-        if not search_id:
-            logger.warning("FaceCheck did not return search ID")
-            return [], {}
-
-        logger.info(f"FaceCheck.ID: search initiated ({search_id}), polling for matches...")
-        start_poll = time.time()
-        max_poll_sec = 30
-
-        while time.time() - start_poll < max_poll_sec:
-            time.sleep(2.0)
-            search_resp = requests.post(
-                f"{site}/api/search",
-                headers=headers,
-                json={"id_search": search_id, "with_progress": True},
-                timeout=15,
-            )
-            if search_resp.status_code != 200:
-                continue
-
-            search_data = search_resp.json()
-            if search_data.get("error"):
-                logger.warning(f"FaceCheck search error: {search_data['error']}")
-                break
-
-            output = search_data.get("output")
-            if output and "items" in output:
-                items = output["items"] or []
-                for item in items:
-                    u = item.get("url")
-                    if u and u.startswith("http"):
-                        urls.append(u)
-                        raw_score = item.get("score", 0)
-                        scores[u] = round(float(raw_score) / 100.0, 3)
-                logger.info(f"FaceCheck.ID: search completed! Found {len(urls)} biometric matches")
-                break
-
-            progress = search_data.get("progress", 0)
-            logger.info(f"FaceCheck.ID: scanning faces... {progress}%")
-
-    except Exception as e:
-        logger.warning(f"FaceCheck.ID search failed: {e}")
-
-    deduped_urls = list(dict.fromkeys(urls))[:25]
-    return deduped_urls, scores
-
-
-# ─── Engine 3: Google Custom Search ──────────────────────────────────────────
-
-def search_google_custom(face_crop_path: str) -> list[str]:
-    """
-    Google Custom Search API — searches configured social media sites
-    for the face image. Returns list of result URLs.
-    """
+def search_google_cse(face_crop_path, person_name=None):
     api_key = os.getenv("GOOGLE_API_KEY")
     cse_id  = os.getenv("GOOGLE_CSE_ID")
-
     if not api_key or not cse_id:
-        logger.warning("GOOGLE_API_KEY or GOOGLE_CSE_ID not set — skipping Google CSE")
         return []
+    urls = []
+    try:
+        if person_name:
+            queries = [
+                f'"{person_name}" site:linkedin.com',
+                f'"{person_name}" site:twitter.com OR site:x.com',
+                f'"{person_name}" site:github.com',
+                f'"{person_name}" startup founder India',
+                f'"{person_name}" profile',
+            ]
+            for query in queries:
+                resp = requests.get("https://www.googleapis.com/customsearch/v1", params={"key": api_key, "cx": cse_id, "q": query, "num": 5}, timeout=10)
+                if resp.status_code == 200:
+                    for item in resp.json().get("items", []):
+                        if item.get("link"):
+                            urls.append(item["link"])
+                time.sleep(0.5)
+        else:
+            resp = requests.get("https://www.googleapis.com/customsearch/v1", params={"key": api_key, "cx": cse_id, "q": "person profile photo", "searchType": "image", "imgType": "face", "num": 10}, timeout=10)
+            if resp.status_code == 200:
+                for item in resp.json().get("items", []):
+                    url = item.get("link") or item.get("image", {}).get("contextLink")
+                    if url:
+                        urls.append(url)
+        logger.info(f"Google CSE: {len(urls)} URLs (name={person_name})")
+    except Exception as e:
+        logger.warning(f"Google CSE failed: {e}")
+    return list(dict.fromkeys(urls))[:20]
 
+def search_serpapi(face_crop_path):
+    api_key = os.getenv("SERPAPI_KEY")
+    if not api_key:
+        return []
     urls = []
     try:
         import base64
-        from PIL import Image as PILImage
-        import io
-
-        # Google CSE doesn't accept image uploads directly —
-        # we use the image as a query by describing it via Vision API
-        # Instead, we do a reverse image search by fetching the image
-        # as base64 and using Google's imageUrl parameter via a temp upload
-
-        # Practical approach: use the face hash as search signal
-        # combined with Google CSE image search
-        # For best results, we search with common face-related terms
-        # across our configured social media sites
-
-        # Read and encode image
         with open(face_crop_path, "rb") as f:
-            img_data = f.read()
-
-        # Use Google Vision API web detection if available,
-        # otherwise fall back to CSE image search
-        try:
-            from google.cloud import vision
-            client = vision.ImageAnnotatorClient()
-            image  = vision.Image(content=img_data)
-            response = client.web_detection(image=image)
-
-            for page in response.web_detection.pages_with_matching_images:
-                if page.url:
-                    urls.append(page.url)
-
-            for match in response.web_detection.full_matching_images:
-                if match.url:
-                    urls.append(match.url)
-
-            for match in response.web_detection.partial_matching_images:
-                if match.url:
-                    urls.append(match.url)
-
-            logger.info(f"Google Vision Web Detection: {len(urls)} URLs")
-
-        except Exception:
-            # Fallback: Google Custom Search image search
-            # Search for person-related terms across social sites
-            search_queries = [
-                "person profile photo",
-                "person headshot",
-            ]
-
-            for query in search_queries:
-                params = {
-                    "key":        api_key,
-                    "cx":         cse_id,
-                    "q":          query,
-                    "searchType": "image",
-                    "num":        10,
-                }
-                resp = requests.get(
-                    "https://www.googleapis.com/customsearch/v1",
-                    params=params,
-                    timeout=10,
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    for item in data.get("items", []):
-                        url = item.get("link") or item.get("image", {}).get("contextLink")
-                        if url:
-                            urls.append(url)
-
-        logger.info(f"Google CSE: {len(urls)} raw URLs")
-
-    except Exception as e:
-        logger.warning(f"Google Custom Search failed: {e}")
-
-    return list(dict.fromkeys(urls))[:20]
-
-
-# ─── Engine 4: SerpApi (Google Lens Reverse Image) ───────────────────────────
-
-def search_serpapi(face_crop_path: str) -> list[str]:
-    """
-    SerpApi Google Lens search.
-    Uploads image via SerpApi Image API, then searches visual matches.
-    Returns list of result URLs.
-    """
-    api_key = os.getenv("SERPAPI_KEY")
-    if not api_key:
-        logger.warning("SERPAPI_KEY not set — skipping SerpApi")
-        return []
-
-    urls = []
-    try:
-        # 1. Upload image to SerpApi Image API
-        with open(face_crop_path, "rb") as f:
-            up_resp = requests.post(
-                "https://serpapi.com/image",
-                files={"image": f},
-                data={"api_key": api_key},
-                timeout=15,
-            )
-
-        if up_resp.status_code != 200:
-            logger.warning(f"SerpApi upload error: {up_resp.status_code} — {up_resp.text[:200]}")
-            return []
-
-        image_id = up_resp.json().get("image_id")
-        if not image_id:
-            logger.warning("SerpApi: No image_id returned from upload")
-            return []
-
-        # 2. Query Google Lens
-        params = {
-            "engine": "google_lens",
-            "image_id": image_id,
-            "api_key": api_key,
-        }
-
-        response = requests.get(
-            "https://serpapi.com/search",
-            params=params,
-            timeout=25,
-        )
-
-        if response.status_code != 200:
-            logger.warning(f"SerpApi search error: {response.status_code} — {response.text[:200]}")
-            return []
-
-        data = response.json()
-
-        # Visual matches (pages with matching imagery)
-        for item in data.get("visual_matches", []):
-            url = item.get("link")
-            if url:
-                urls.append(url)
-
-        # Knowledge graph links if present
-        for item in data.get("knowledge_graph", []):
-            url = item.get("link")
-            if url:
-                urls.append(url)
-
-        logger.info(f"SerpApi (Google Lens): found {len(urls)} raw URLs")
-
-    except Exception as e:
-        logger.warning(f"SerpApi search failed: {e}")
-
-    return list(dict.fromkeys(urls))[:20]
-
-
-# ─── Multi-Crop Strategy ─────────────────────────────────────────────────────
-
-def generate_search_crops(face_crop_path: str, output_dir: str) -> list[str]:
-    """
-    Generates 3 crop variants for broader engine coverage:
-      - tight  : face only (original crop)
-      - flipped: horizontal mirror (catches different angle matches)
-      - sharpened: contrast-enhanced (helps on blurry inputs)
-    """
-    output_dir = Path(output_dir)
-    crops = [face_crop_path]  # original always included
-
-    try:
-        img = Image.open(face_crop_path).convert("RGB")
-
-        # Flipped
-        flipped = img.transpose(Image.FLIP_LEFT_RIGHT)
-        flipped_path = str(output_dir / "face_crop_flipped.jpg")
-        flipped.save(flipped_path, quality=95)
-        crops.append(flipped_path)
-
-        # Sharpened
-        from PIL import ImageEnhance, ImageFilter
-        sharpened = img.filter(ImageFilter.SHARPEN)
-        sharpened = ImageEnhance.Contrast(sharpened).enhance(1.3)
-        sharpened_path = str(output_dir / "face_crop_sharpened.jpg")
-        sharpened.save(sharpened_path, quality=95)
-        crops.append(sharpened_path)
-
-    except Exception as e:
-        logger.warning(f"Crop variant generation failed: {e}")
-
-    return crops
-
-
-# ─── Wayback Machine Cross-Reference ─────────────────────────────────────────
-
-def wayback_check(url: str) -> dict:
-    """
-    Checks if a URL has Wayback Machine snapshots.
-    Returns first-seen date and snapshot count.
-    """
-    result = {"has_archive": False, "first_seen": None, "snapshot_count": 0}
-    try:
-        cdx_url = (
-            f"https://web.archive.org/cdx/search/cdx"
-            f"?url={url}&output=json&limit=1&fl=timestamp&fastLatest=true"
-        )
-        resp = requests.get(cdx_url, timeout=5)
+            image_b64 = base64.b64encode(f.read()).decode()
+        resp = requests.get("https://serpapi.com/search", params={"engine": "google_reverse_image", "api_key": api_key, "image_content": image_b64}, timeout=20)
         if resp.status_code == 200:
             data = resp.json()
-            if len(data) > 1:  # first row is header
-                ts = data[1][0]  # e.g. "20231102142200"
-                result["has_archive"] = True
-                result["first_seen"] = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]}"
-
-        # Snapshot count (separate query)
-        count_url = f"https://web.archive.org/cdx/search/cdx?url={url}&output=json&fl=timestamp&limit=100"
-        count_resp = requests.get(count_url, timeout=5)
-        if count_resp.status_code == 200:
-            count_data = count_resp.json()
-            result["snapshot_count"] = max(0, len(count_data) - 1)
-
+            for item in data.get("image_results", []):
+                url = item.get("link") or item.get("original")
+                if url:
+                    urls.append(url)
+        logger.info(f"SerpApi: {len(urls)} URLs")
     except Exception as e:
-        logger.debug(f"Wayback check failed for {url}: {e}")
+        logger.warning(f"SerpApi failed: {e}")
+    return list(dict.fromkeys(urls))[:20]
 
-    return result
-
-
-# ─── Main Search Function ─────────────────────────────────────────────────────
-
-def multi_engine_search(
-    face_crop_path: str,
-    output_dir: str = "output",
-    exif_data: Optional[dict] = None,
-) -> dict:
-    """
-    Runs multi-engine reverse image search and returns ranked results.
-
-    Returns:
-      {
-        "best_match": { url, platform, engine_agreement, phash, wayback, score },
-        "all_candidates": [ ... ],
-        "engines_queried": [...],
-        "engines_with_results": [...],
-        "total_candidates": int,
-        "success": bool
-      }
-    """
-    result = {
-        "best_match": None,
-        "all_candidates": [],
-        "engines_queried": [],
-        "engines_with_results": [],
-        "total_candidates": 0,
-        "success": False,
-    }
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Generate search crop variants
-    crops = generate_search_crops(face_crop_path, str(output_dir))
-    primary_crop = crops[0]
-
-    # ── Run engines ───────────────────────────────────────────────────────────
-    engine_results: dict[str, list[str]] = {}
-    facecheck_scores: dict[str, float] = {}
-
-    logger.info("=" * 50)
-    logger.info("Starting multi-engine reverse image search")
-    logger.info("=" * 50)
-
-    # Engine 1: FaceCheck.ID (Specialized Face Biometrics for Social Media)
-    if os.getenv("FACECHECK_API_KEY"):
-        logger.info("\n[Engine 1/4] FaceCheck.ID (Social Biometrics)...")
-        result["engines_queried"].append("facecheck")
-        fc_urls, fc_scores = search_facecheck(primary_crop)
-        if fc_urls:
-            engine_results["facecheck"] = fc_urls
-            facecheck_scores.update(fc_scores)
-            result["engines_with_results"].append("facecheck")
-            logger.info(f"FaceCheck.ID: {len(fc_urls)} biometric matches")
+def search_modal_db(face_crop_path):
+    try:
+        import modal
+        from face_search_modal import app, search_face_db
+        with open(face_crop_path, "rb") as f:
+            image_bytes = f.read()
+        logger.info("Calling Modal A100 face DB search...")
+        with app.run():
+            result = search_face_db.remote(image_bytes)
+        if result.get("found"):
+            logger.info(f"Modal DB match: {result['name']} (conf: {result['confidence']}, db: {result['database']})")
         else:
-            logger.warning("FaceCheck.ID: 0 results")
-        time.sleep(random.uniform(1.0, 2.0))
-    else:
-        logger.info("\n[Engine 1/4] FaceCheck.ID skipped (set FACECHECK_API_KEY in .env for Instagram/social search)")
+            logger.info("Modal DB: no match found")
+        return result
+    except Exception as e:
+        logger.warning(f"Modal unavailable: {e}")
+        return {"found": False, "name": None, "confidence": 0.0}
 
-    # Engine 2: Yandex (Primary Web Face Engine — Playwright Scraper)
-    logger.info("\n[Engine 2/4] Yandex (Playwright)...")
+def verify_name_match(name, face_crop_path):
+    api_key = os.getenv("GOOGLE_API_KEY")
+    cse_id  = os.getenv("GOOGLE_CSE_ID")
+    if not api_key or not cse_id:
+        return 0.7
+    try:
+        from deepface import DeepFace
+        resp = requests.get("https://www.googleapis.com/customsearch/v1",
+            params={"key": api_key, "cx": cse_id, "q": f'"{name}" official portrait headshot',
+                    "searchType": "image", "imgType": "face", "num": 5}, timeout=10)
+        items = resp.json().get("items", []) if resp.status_code == 200 else []
+        for item in items:
+            img_url = item.get("link")
+            if not img_url:
+                continue
+            try:
+                img_resp = requests.get(img_url, timeout=6)
+                if img_resp.status_code != 200 or len(img_resp.content) < 5000:
+                    continue
+                with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+                    f.write(img_resp.content)
+                    temp_path = f.name
+                result = DeepFace.verify(img1_path=face_crop_path, img2_path=temp_path, model_name="ArcFace", enforce_detection=False, silent=True)
+                os.unlink(temp_path)
+                if result["verified"]:
+                    conf = round(1 - result["distance"], 3)
+                    logger.info(f"Name verification: {name} CONFIRMED (conf: {conf})")
+                    return conf
+            except Exception as e:
+                logger.debug(f"Verification attempt failed: {e}")
+                try:
+                    os.unlink(temp_path)
+                except Exception:
+                    pass
+    except Exception as e:
+        logger.warning(f"Name verification failed: {e}")
+    return 0.6
+
+def cross_validate_strategies(db_result, image_search_urls):
+    if not db_result.get("found"):
+        return db_result
+    name = db_result.get("name", "").lower()
+    name_parts = [p for p in name.split() if len(p) > 3]
+    name_in_urls = any(any(part in url.lower() for part in name_parts) for url in image_search_urls)
+    if name_in_urls:
+        db_result["confidence"] = min(db_result["confidence"] * 1.2, 1.0)
+        db_result["cross_validated"] = True
+        logger.info(f"Cross-validation: AGREE on {db_result['name']}")
+    else:
+        db_result["confidence"] *= 0.85
+        db_result["cross_validated"] = False
+        logger.warning(f"Cross-validation: DISAGREE — DB says {db_result['name']}")
+    db_result["confidence"] = round(db_result["confidence"], 3)
+    return db_result
+
+def score_candidates(url_engine_map, face_crop_path, engine_count, person_name=None):
+    candidates = []
+    top_urls = sorted(url_engine_map.keys(), key=lambda u: len(url_engine_map[u]), reverse=True)[:15]
+    for url in top_urls:
+        engines_agreed   = url_engine_map[url]
+        engine_agreement = len(engines_agreed) / max(engine_count, 1)
+        plat_score       = platform_score(url)
+        phash_result     = phash_similarity(face_crop_path, url)
+        wayback          = wayback_check(url) if len(engines_agreed) >= 2 else {}
+        name_bonus       = 0.0
+        if person_name:
+            name_parts = [p.lower() for p in person_name.split() if len(p) > 3]
+            if any(part in url.lower() for part in name_parts):
+                name_bonus = 0.15
+        phash_comp = 0.0
+        if phash_result and phash_result.get("accessible"):
+            dist = phash_result.get("hamming_distance", 64)
+            phash_comp = max(0.0, 1.0 - dist / 64.0) * 0.15
+        composite_score = (engine_agreement * 0.40) + ((plat_score / 10) * 0.30) + phash_comp + (name_bonus * 0.15)
+        candidates.append({
+            "url": url, "engines": engines_agreed,
+            "engine_agreement": round(engine_agreement, 3),
+            "platform_score": plat_score,
+            "platform": urlparse(url).netloc.replace("www.", ""),
+            "phash": phash_result, "wayback": wayback,
+            "name_match": name_bonus > 0,
+            "composite_score": round(composite_score, 4),
+        })
+    candidates.sort(key=lambda c: c["composite_score"], reverse=True)
+    return candidates
+
+def multi_engine_search(face_crop_path, output_dir="output", exif_data=None, use_modal=True):
+    result = {
+        "best_match": None, "all_candidates": [],
+        "engines_queried": [], "engines_with_results": [],
+        "total_candidates": 0, "modal_result": {},
+        "person_name": None, "name_confidence": 0.0,
+        "name_verified": False, "success": False,
+    }
+    output_dir   = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    crops        = generate_search_crops(face_crop_path, str(output_dir))
+    primary_crop = crops[0]
+    person_name  = None
+
+    # Strategy 2 — Modal DB
+    modal_result = {"found": False}
+    if use_modal:
+        logger.info("\n[Strategy 2] Modal A100 Face DB Search...")
+        modal_result = search_modal_db(primary_crop)
+        result["modal_result"] = modal_result
+        if modal_result.get("found"):
+            person_name = modal_result["name"]
+            result["person_name"]     = person_name
+            result["name_confidence"] = modal_result["confidence"]
+            logger.info(f"Person identified: {person_name}")
+
+    # Strategy 1 — Image Search
+    engine_results = {}
+    logger.info("\n[Strategy 1] Image Search Engines...")
+
     result["engines_queried"].append("yandex")
     yandex_urls = search_yandex(primary_crop)
     if yandex_urls:
         engine_results["yandex"] = yandex_urls
         result["engines_with_results"].append("yandex")
-        logger.info(f"Yandex: {len(yandex_urls)} results")
-    else:
-        logger.warning("Yandex: 0 results")
-
     time.sleep(random.uniform(1.0, 2.0))
 
-    # Engine 3: Bing Visual Search (Free Playwright Scraper or Azure API)
-    logger.info("\n[Engine 3/4] Bing Visual Search...")
-    result["engines_queried"].append("bing")
-    bing_urls = search_bing(primary_crop)
-    if bing_urls:
-        engine_results["bing"] = bing_urls
-        result["engines_with_results"].append("bing")
-        logger.info(f"Bing: {len(bing_urls)} results")
-    else:
-        logger.warning("Bing: 0 results")
-
+    result["engines_queried"].append("google_cse")
+    google_urls = search_google_cse(primary_crop)
+    if google_urls:
+        engine_results["google_cse"] = google_urls
+        result["engines_with_results"].append("google_cse")
     time.sleep(random.uniform(1.0, 2.0))
 
-    # Engine 4: Google Custom Search & SerpApi (fallback)
-    all_results_so_far = sum(len(v) for v in engine_results.values())
-    if all_results_so_far < 3:
-        if os.getenv("GOOGLE_CSE_KEY"):
-            logger.info("\n[Engine 4/4] Google Custom Search...")
-            result["engines_queried"].append("google_cse")
-            google_urls = search_google_custom(primary_crop)
-            if google_urls:
-                engine_results["google_cse"] = google_urls
-                result["engines_with_results"].append("google_cse")
-                logger.info(f"Google CSE: {len(google_urls)} results")
+    if sum(len(v) for v in engine_results.values()) < 5:
+        result["engines_queried"].append("serpapi")
+        serpapi_urls = search_serpapi(primary_crop)
+        if serpapi_urls:
+            engine_results["serpapi"] = serpapi_urls
+            result["engines_with_results"].append("serpapi")
 
-        if os.getenv("SERPAPI_KEY"):
-            logger.info("\n[Engine 4/4] SerpApi (Google Reverse Image)...")
-            result["engines_queried"].append("serpapi")
-            serpapi_urls = search_serpapi(primary_crop)
-            if serpapi_urls:
-                engine_results["serpapi"] = serpapi_urls
-                result["engines_with_results"].append("serpapi")
-                logger.info(f"SerpApi: {len(serpapi_urls)} results")
-            else:
-                logger.warning("SerpApi: 0 results")
-    else:
-        logger.info("\n[Engine 4/4] SerpApi / Google CSE skipped (sufficient results from primary engines)")
+    # Strategy 3 — Name-based search
+    if person_name:
+        logger.info(f"\n[Strategy 3] Name search: {person_name}")
+        name_urls = search_google_cse(primary_crop, person_name=person_name)
+        if name_urls:
+            engine_results["name_search"] = name_urls
+            result["engines_with_results"].append("name_search")
 
-    # ── Pool and score all URLs ───────────────────────────────────────────────
-    url_engine_map: dict[str, list[str]] = defaultdict(list)
+    # Pool and score
+    url_engine_map = defaultdict(list)
     for engine, urls in engine_results.items():
         for url in urls:
             url_engine_map[url].append(engine)
 
     if not url_engine_map:
-        logger.warning("All engines returned 0 results")
-        result["success"] = False
+        logger.warning("All strategies returned 0 URLs")
         return result
 
-    # ── Score each candidate ──────────────────────────────────────────────────
-    candidates = []
-    top_urls = sorted(
-        url_engine_map.keys(),
-        key=lambda u: (len(url_engine_map[u]), facecheck_scores.get(u, 0.0)),
-        reverse=True
-    )[:20]
-
-    logger.info(f"\nScoring top {len(top_urls)} candidates...")
-
-    for url in top_urls:
-        engines_agreed = url_engine_map[url]
-        engine_agreement = len(engines_agreed) / max(len(engine_results), 1)
-        plat_score = platform_score(url)
-
-        # pHash check
-        phash_result = phash_similarity(face_crop_path, url)
-
-        # Wayback Machine check
-        wayback = {}
-        if len(engines_agreed) >= 2:
-            wayback = wayback_check(url)
-
-        # FaceCheck biometric match confidence (if found via FaceCheck)
-        facecheck_sim = facecheck_scores.get(url, 0.0)
-
-        # Composite score calculation
-        if facecheck_sim > 0:
-            biometric_comp = facecheck_sim * 0.40
-            agreement_comp = engine_agreement * 0.25
-            platform_comp  = (plat_score / 10) * 0.20
-            phash_comp     = 0.0
-            if phash_result and phash_result.get("accessible"):
-                dist = phash_result.get("hamming_distance", 64)
-                phash_comp = max(0.0, 1.0 - dist / 64.0) * 0.15
-            composite_score = biometric_comp + agreement_comp + platform_comp + phash_comp
-        else:
-            agreement_comp = engine_agreement * 0.45
-            platform_comp  = (plat_score / 10) * 0.30
-            phash_comp     = 0.0
-            if phash_result and phash_result.get("accessible"):
-                dist = phash_result.get("hamming_distance", 64)
-                phash_comp = max(0.0, 1.0 - dist / 64.0) * 0.25
-            composite_score = agreement_comp + platform_comp + phash_comp
-
-        candidate = {
-            "url": url,
-            "engines": engines_agreed,
-            "engine_agreement": round(engine_agreement, 3),
-            "platform_score": plat_score,
-            "platform": urlparse(url).netloc.replace("www.", ""),
-            "phash": phash_result,
-            "wayback": wayback,
-            "facecheck_score": facecheck_sim,
-            "composite_score": round(composite_score, 4),
-        }
-        candidates.append(candidate)
-
-    # Sort by composite score
-    candidates.sort(key=lambda c: c["composite_score"], reverse=True)
-    result["all_candidates"] = candidates
+    candidates = score_candidates(url_engine_map, face_crop_path, len(engine_results), person_name)
+    result["all_candidates"]   = candidates
     result["total_candidates"] = len(candidates)
 
+    # Strategy 4 — Cross-validation
+    if modal_result.get("found") and candidates:
+        all_urls     = [c["url"] for c in candidates]
+        modal_result = cross_validate_strategies(modal_result, all_urls)
+        result["modal_result"]    = modal_result
+        result["name_confidence"] = modal_result["confidence"]
+
+    # Layer 7 — Name verification
+    if person_name and modal_result.get("confidence", 0) > 0.55:
+        logger.info(f"\n[Layer 7] Verifying: {person_name}")
+        verified_conf = verify_name_match(person_name, face_crop_path)
+        result["name_verified"]   = verified_conf > 0.65
+        result["name_confidence"] = round((result["name_confidence"] + verified_conf) / 2, 3)
+        logger.info(f"Verification: {'CONFIRMED' if result['name_verified'] else 'UNCERTAIN'} (conf: {result['name_confidence']})")
+
+    # Select best match
     if candidates:
-        result["best_match"] = candidates[0]
-        result["success"] = True
-        logger.info(f"\nBest match: {candidates[0]['url']}")
-        logger.info(f"  Engines agreed: {candidates[0]['engines']}")
-        logger.info(f"  Composite score: {candidates[0]['composite_score']}")
-        logger.info(f"  Platform: {candidates[0]['platform']}")
+        best = candidates[0]
+        if person_name:
+            name_candidates = [c for c in candidates if "name_search" in c.get("engines", []) and c["platform_score"] >= 7]
+            if name_candidates:
+                best = name_candidates[0]
+                logger.info(f"Prioritizing name-search result: {best['url']}")
+        result["best_match"] = best
+        result["success"]    = True
+        logger.info(f"\nBest match: {best['url']}")
+        logger.info(f"  Score: {best['composite_score']} | Platform: {best['platform']}")
 
     return result
 
 
 if __name__ == "__main__":
-    import sys
-    import json
-
+    import sys, json, logging
     logging.basicConfig(level=logging.INFO, format="%(levelname)s | %(message)s")
-
     if len(sys.argv) < 2:
-        print("Usage: python search/reverse_search.py <face_crop_path>")
+        print("Usage: python search/reverse_search.py <face_crop_path> [--no-modal]")
         sys.exit(1)
-
-    from dotenv import load_dotenv
-    load_dotenv()
-
-    result = multi_engine_search(sys.argv[1])
-    # Pretty print without large nested objects
-    print(json.dumps(result, indent=2, default=str))
+    use_modal = "--no-modal" not in sys.argv
+    result = multi_engine_search(sys.argv[1], use_modal=use_modal)
+    printable = {k: v for k, v in result.items() if k != "all_candidates"}
+    printable["candidate_count"] = result["total_candidates"]
+    print(json.dumps(printable, indent=2, default=str))

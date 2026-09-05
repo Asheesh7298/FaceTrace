@@ -28,3 +28,6 @@ eth-account==0.11.0
 numpy==1.26.4
 python-dotenv==1.0.1
 rich==13.7.1
+
+# Modal (cloud GPU inference)
+modal>=0.64.0
