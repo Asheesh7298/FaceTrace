@@ -310,4 +310,4 @@ samples/                 # demo faces
 [Wikidata](https://www.wikidata.org) ·
 [Modal](https://modal.com) ·
 [Hardhat](https://hardhat.org) ·
-[Wayback Machine](https://archive.org/web/)
+[Wayback Machine](https://archive.org/web/) ·
