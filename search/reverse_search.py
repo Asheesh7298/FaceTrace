@@ -40,6 +40,10 @@ from search.identity import extract_person_name, _person_via_spacy, _person_via_
 from search.facecheck import search_facecheck, facecheck_available
 from search.curated_db import search_curated_db, lookup_name
 from search.yandex import search_yandex
+from search.vision import search_vision, vision_available
+from search.rekognition import search_rekognition, rekognition_available
+from search.bing import search_bing
+from search.tineye import search_tineye, tineye_available
 
 logger = logging.getLogger(__name__)
 
@@ -522,15 +526,40 @@ def multi_engine_search(face_crop_path: str, output_dir: str = "output",
             logger.warning(f"Yandex booster failed: {e}")
             return []
 
+    # Extra pluggable engines — each returns {"names":[(nm,w)], "leads":[...]}, or
+    # None when not configured. They activate only when their key/flag is set, so
+    # they add zero latency and zero risk when unconfigured.
+    def _t_vision():
+        return search_vision(face_crop_path) if vision_available() else None
+
+    def _t_rekognition():
+        return search_rekognition(face_crop_path) if rekognition_available() else None
+
+    def _t_bing():
+        if os.getenv("ENABLE_BING") != "1":
+            return None
+        try:
+            return search_bing(lens_image)
+        except Exception as e:
+            logger.warning(f"Bing booster failed: {e}")
+            return None
+
+    def _t_tineye():
+        return search_tineye(face_crop_path) if tineye_available() else None
+
     progress("search_step", {"step": "engines",
-                             "message": "Running FaceCheck + Lens + Curated index in parallel"})
-    with ThreadPoolExecutor(max_workers=4) as ex:
+                             "message": "Running all identity engines in parallel"})
+    with ThreadPoolExecutor(max_workers=8) as ex:
         f_fc, f_lens, f_db, f_yx = (ex.submit(_t_facecheck), ex.submit(_t_lens),
                                     ex.submit(_t_db), ex.submit(_t_yandex))
+        f_vis, f_rek, f_bing, f_tin = (ex.submit(_t_vision), ex.submit(_t_rekognition),
+                                       ex.submit(_t_bing), ex.submit(_t_tineye))
         fc = f_fc.result()
         hosted, lens = f_lens.result()
         db = f_db.result()
         yx = f_yx.result()
+        extra = {"google_vision": f_vis.result(), "aws_rekognition": f_rek.result(),
+                 "bing": f_bing.result(), "tineye": f_tin.result()}
 
     # Merge FaceCheck
     fc_best = None
@@ -575,6 +604,20 @@ def multi_engine_search(face_crop_path: str, output_dir: str = "output",
         for l in yx:
             leads.append({"url": l["url"], "engine": "yandex", "title": l.get("title", "")})
             add_name(_name_from_title(l.get("title", "")), 0.4)
+
+    # Merge extra pluggable engines uniformly ({"names":[(nm,w)], "leads":[...]}).
+    for eng_name, res in extra.items():
+        if res is None:
+            continue
+        q(eng_name)
+        got = bool(res.get("names") or res.get("leads"))
+        if got:
+            hit(eng_name)
+        for nm, w in res.get("names", []):
+            add_name(nm, w)
+        for l in res.get("leads", []):
+            leads.append({"url": l["url"], "engine": eng_name, "title": l.get("title", "")})
+            add_name(_name_from_title(l.get("title", "")), 0.3)
 
     # ── RESOLVE IDENTITY — verify top candidates (verify-before-claim) ────────
     ranked = [n for n, _ in name_votes.most_common()]

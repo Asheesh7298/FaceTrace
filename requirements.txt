@@ -18,8 +18,9 @@ exifread==3.0.0
 requests==2.31.0
 spacy==3.8.7                 # PERSON NER for identity extraction from Lens ai_overview
 # after install run: python -m spacy download en_core_web_sm
-playwright==1.44.0           # optional — only for the Yandex booster (ENABLE_YANDEX=1)
+playwright==1.44.0           # optional — Yandex/Bing boosters (ENABLE_YANDEX/BING=1)
 # after install run: python -m playwright install chromium
+boto3==1.34.100              # optional — only for the AWS Rekognition engine
 
 # Blockchain (Python side)
 web3==6.15.1
