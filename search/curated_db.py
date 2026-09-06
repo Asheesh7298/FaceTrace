@@ -285,6 +285,29 @@ def build_from_wikidata(target: int = 800, path: Path = INDEX_PATH,
 
 # ─── Search ──────────────────────────────────────────────────────────────────
 
+def lookup_name(name: str) -> Optional[dict]:
+    """Gazetteer lookup: if `name` is in the index, return its stored entry
+    (name + Instagram + Twitter). Pure name match — NO face comparison — so it
+    carries zero false-positive risk. Used to attach a real social link to an
+    identity that Google Lens already confirmed by name."""
+    if not name:
+        return None
+    _, meta = load_matrix()
+    if not meta:
+        return None
+    nl = name.strip().lower()
+    for e in meta:                                  # exact name
+        if (e.get("name") or "").strip().lower() == nl:
+            return e
+    parts = [p for p in nl.split() if len(p) > 2]   # tolerant: all name parts present
+    if len(parts) >= 2:
+        for e in meta:
+            en = (e.get("name") or "").lower()
+            if all(p in en for p in parts):
+                return e
+    return None
+
+
 def search_curated_db(crop_path: str, path: Path = INDEX_PATH,
                       min_sim: Optional[float] = None) -> dict:
     """Best candidate from the local index (a NAME + its socials to confirm).

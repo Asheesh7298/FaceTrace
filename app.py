@@ -306,6 +306,49 @@ async def verify_demo(filename: str):
         raise HTTPException(status_code=500, detail=f"Verification failed: {e}")
 
 
+@app.get("/api/health")
+async def health():
+    """Pre-demo self-test: confirm every dependency is ready before judges join.
+    Open http://localhost:8000/api/health — all-green means you're good to go."""
+    import os as _os
+    checks = {}
+
+    checks["serpapi_key"] = bool(_os.getenv("SERPAPI_KEY"))
+    checks["facecheck_key"] = bool(_os.getenv("FACECHECK_API_KEY"))  # optional
+
+    # Curated index
+    try:
+        from search.curated_db import load_matrix
+        emb, meta = load_matrix()
+        checks["curated_index"] = {"loaded": emb is not None, "faces": 0 if emb is None else len(meta)}
+    except Exception as e:
+        checks["curated_index"] = {"loaded": False, "error": str(e)}
+
+    # spaCy NER
+    try:
+        from search.identity import _get_nlp
+        checks["spacy_ner"] = _get_nlp() is not None
+    except Exception:
+        checks["spacy_ner"] = False
+
+    # Blockchain reachability (localhost Hardhat) + deployment present
+    try:
+        from web3 import Web3
+        w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
+        checks["hardhat_node"] = w3.is_connected()
+    except Exception:
+        checks["hardhat_node"] = False
+    checks["deployment_localhost"] = Path("deployment_localhost.json").exists()
+
+    # Models warm? (face_crop from a prior run indicates detection ran)
+    checks["models_warm"] = Path("output/_warmup.jpg").exists()
+
+    required = ["serpapi_key", "spacy_ner"]
+    ready = all(checks.get(k) for k in required) and checks["curated_index"].get("loaded")
+    return {"ready": bool(ready), "checks": checks,
+            "note": "hardhat_node + deployment_localhost are needed only for --network localhost anchoring"}
+
+
 @app.get("/api/samples")
 async def get_samples():
     samples_dir = Path("samples")

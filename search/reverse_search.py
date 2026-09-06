@@ -38,7 +38,7 @@ except ImportError:
 from search.image_host import host_image
 from search.identity import extract_person_name, _person_via_spacy, _person_via_regex
 from search.facecheck import search_facecheck, facecheck_available
-from search.curated_db import search_curated_db
+from search.curated_db import search_curated_db, lookup_name
 from search.yandex import search_yandex
 
 logger = logging.getLogger(__name__)
@@ -52,16 +52,28 @@ SERPAPI = "https://serpapi.com/search"
 # Social platforms ranked by how much a hit there proves a real profile.
 PLATFORM_PRIORITY = {
     "instagram.com": 10, "x.com": 10, "twitter.com": 10, "linkedin.com": 10,
-    "facebook.com": 9, "youtube.com": 8, "github.com": 8,
+    "facebook.com": 9, "youtube.com": 8, "github.com": 8, "devfolio.co": 8,
     "imdb.com": 7, "wikipedia.org": 7, "yourstory.com": 7, "crunchbase.com": 7,
+    "dev.to": 7, "behance.net": 7,
     "inc42.com": 6, "wellfound.com": 6, "researchgate.net": 6, "medium.com": 5,
-    "pinterest.com": 3, "reddit.com": 4,
+    "reddit.com": 5, "pinterest.com": 3,
+    # News/press — recognized + scored LOW so it never outranks a real profile,
+    # but adds corroboration + a datable, archivable web result.
+    "forbes.com": 4, "techcrunch.com": 4, "entrackr.com": 4, "bloomberg.com": 4,
+    "economictimes.indiatimes.com": 3, "business-standard.com": 3,
+    "thehindu.com": 3, "hindustantimes.com": 3, "ndtv.com": 3,
+    "timesofindia.indiatimes.com": 3, "moneycontrol.com": 3,
 }
 
-# Platforms to target in the name-based search (one combined query to save quota).
+# Platforms to target in the name-based search (all bundled into ONE combined
+# query, so adding sites costs no extra API calls). Social/dev first (the real
+# deliverable), then a few press outlets for corroboration.
 SOCIAL_SITES = [
-    "linkedin.com", "instagram.com", "x.com", "twitter.com",
-    "facebook.com", "github.com", "imdb.com",
+    "linkedin.com", "instagram.com", "x.com", "twitter.com", "facebook.com",
+    "github.com", "devfolio.co", "reddit.com", "dev.to", "imdb.com",
+]
+NEWS_SITES = [
+    "yourstory.com", "inc42.com", "forbes.com", "techcrunch.com", "entrackr.com",
 ]
 
 _UA = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) FaceTrace/1.0"}
@@ -85,31 +97,80 @@ def platform_name(url: str) -> str:
 
 # ─── SerpApi: Google Lens (identity) ─────────────────────────────────────────
 
-def lens_identify(hosted_url: str, api_key: str) -> dict:
-    """Run Google Lens + expand ai_overview. Returns {name, ai_overview, visual_matches}."""
+def _name_from_kg(kg: Optional[dict]) -> Optional[str]:
+    """Name from a Google Lens knowledge_graph entry, when it's clearly a person."""
+    if not kg:
+        return None
+    title = kg.get("title")
+    t = (kg.get("type") or "").lower()
+    person_hints = ("actor", "actress", "singer", "musician", "player", "rapper",
+                    "politician", "director", "model", "author", "comedian",
+                    "athlete", "footballer", "cricketer", "businessperson", "ceo",
+                    "entrepreneur", "youtuber", "personality", "dancer", "producer")
+    if title and (any(h in t for h in person_hints)
+                  or _person_via_spacy(title) or _person_via_regex(title)):
+        return title
+    return None
+
+
+def _name_from_visual(vms: list) -> Optional[str]:
+    """Most-repeated PERSON name across visual-match titles (needs corroboration)."""
+    from collections import Counter
+    c = Counter()
+    for m in vms[:20]:
+        nm = _name_from_title(m.get("title", ""))
+        if nm:
+            c[nm] += 1
+    for nm, cnt in c.most_common(1):
+        if cnt >= 2:      # appears on 2+ pages → more trustworthy
+            return nm
+    return None
+
+
+def _one_lens_call(hosted_url: str, api_key: str):
+    d = requests.get(SERPAPI, params={
+        "engine": "google_lens", "url": hosted_url, "api_key": api_key,
+    }, timeout=45).json()
+    vms = d.get("visual_matches", []) or []
+    kg = d.get("knowledge_graph")
+    ao = d.get("ai_overview")
+    if ao and ao.get("page_token"):     # expand the AI overview
+        ai = requests.get(SERPAPI, params={
+            "engine": "google_ai_overview",
+            "page_token": ao["page_token"], "api_key": api_key,
+        }, timeout=45).json()
+        ao = ai.get("ai_overview", ao)
+    return vms, kg, ao
+
+
+def lens_identify(hosted_url: str, api_key: str, retries: int = 1) -> dict:
+    """Robust Google Lens identity. The ai_overview is stochastic, so we retry it,
+    then fall back to the knowledge_graph and to a corroborated name mined from
+    visual-match titles. Returns {name, ai_overview, visual_matches}."""
     out = {"name": None, "ai_overview": None, "visual_matches": []}
     if not api_key or not hosted_url:
         return out
-    try:
-        d = requests.get(SERPAPI, params={
-            "engine": "google_lens", "url": hosted_url, "api_key": api_key,
-        }, timeout=45).json()
-        out["visual_matches"] = d.get("visual_matches", []) or []
-
-        ao = d.get("ai_overview")
-        # ai_overview usually returns a page_token that must be expanded.
-        if ao and ao.get("page_token"):
-            ai = requests.get(SERPAPI, params={
-                "engine": "google_ai_overview",
-                "page_token": ao["page_token"], "api_key": api_key,
-            }, timeout=45).json()
-            ao = ai.get("ai_overview", ao)
-        out["ai_overview"] = ao
-        out["name"] = extract_person_name(ao)
-        logger.info(f"Lens: {len(out['visual_matches'])} visual matches | "
-                    f"identity: {out['name'] or 'not identified'}")
-    except Exception as e:
-        logger.warning(f"Lens identify failed: {e}")
+    best_vms, best_kg, best_ao = [], None, None
+    for attempt in range(retries + 1):
+        try:
+            vms, kg, ao = _one_lens_call(hosted_url, api_key)
+        except Exception as e:
+            logger.warning(f"Lens call failed (attempt {attempt + 1}): {e}")
+            continue
+        if len(vms) > len(best_vms):
+            best_vms = vms
+        best_kg = kg or best_kg
+        best_ao = ao or best_ao
+        name = extract_person_name(ao)
+        if name:
+            out.update({"name": name, "ai_overview": ao, "visual_matches": vms})
+            logger.info(f"Lens: identity '{name}' (ai_overview, attempt {attempt + 1})")
+            return out
+    # ai_overview gave no name across retries → try fallbacks
+    out["visual_matches"], out["ai_overview"] = best_vms, best_ao
+    out["name"] = _name_from_kg(best_kg) or _name_from_visual(best_vms)
+    logger.info(f"Lens: {len(best_vms)} visual matches | identity: "
+                f"{(out['name'] + ' (fallback)') if out['name'] else 'not identified'}")
     return out
 
 
@@ -119,7 +180,7 @@ def name_social_search(name: str, api_key: str) -> list[dict]:
     """One combined Google query across social sites. Returns [{url, title}]."""
     if not name or not api_key:
         return []
-    sites = " OR ".join(f"site:{s}" for s in SOCIAL_SITES)
+    sites = " OR ".join(f"site:{s}" for s in (SOCIAL_SITES + NEWS_SITES))
     query = f'"{name}" ({sites})'
     results = []
     try:
@@ -439,11 +500,14 @@ def multi_engine_search(face_crop_path: str, output_dir: str = "output",
         h = host_image(lens_image)
         l = {"name": None, "visual_matches": []}
         if h and api_key:
-            l = lens_identify(h, api_key)
-            if not l["name"]:
-                r = lens_identify(h, api_key)
-                if r["name"] or len(r["visual_matches"]) > len(l["visual_matches"]):
-                    l = r
+            l = lens_identify(h, api_key)      # retries + kg/visual fallbacks inside
+        # If the original photo yielded no name, try the tight face crop too.
+        if api_key and not l.get("name") and face_crop_path != lens_image:
+            h2 = host_image(face_crop_path)
+            if h2:
+                l2 = lens_identify(h2, api_key)
+                if l2.get("name") or len(l2.get("visual_matches", [])) > len(l.get("visual_matches", [])):
+                    l, h = l2, (h or h2)
         return h, l
 
     def _t_db():
@@ -515,6 +579,16 @@ def multi_engine_search(face_crop_path: str, output_dir: str = "output",
     # ── RESOLVE IDENTITY — verify top candidates (verify-before-claim) ────────
     ranked = [n for n, _ in name_votes.most_common()]
     result["lens_suggested_name"] = ranked[0] if ranked else None
+
+    # Speculatively fetch social profiles for the top candidate WHILE we verify
+    # (name_search is pure network, verify is TF — no conflict). Saves ~3s when
+    # the top candidate is the one that verifies (the common case).
+    _prof_ex = ThreadPoolExecutor(max_workers=1)
+    prof_future, spec_name = None, None
+    if ranked and api_key:
+        spec_name = ranked[0]
+        prof_future = _prof_ex.submit(name_social_search, spec_name, api_key)
+
     confirmed = None
     best_ver = {"verified": False, "score": 0.0, "matches": 0, "refs_checked": 0,
                 "reference_url": None}
@@ -548,15 +622,35 @@ def multi_engine_search(face_crop_path: str, output_dir: str = "output",
                                   "suggested": result["lens_suggested_name"],
                                   "reference_url": best_ver["reference_url"]})
 
-    # ── If confirmed, fetch clean profile URLs by name ────────────────────────
+    # ── Gazetteer: if the confirmed name is in our 18k index, grab its stored
+    #    Instagram/Twitter directly (pure name lookup, no face match → 0 risk).
+    if confirmed:
+        gaz = lookup_name(confirmed)
+        if gaz:
+            hit("curated_db")
+            for u in (gaz.get("instagram"), gaz.get("twitter")):
+                if u:
+                    leads.append({"url": u, "engine": "curated_db", "title": confirmed})
+
+    # ── If confirmed, fetch clean profile URLs by name (reuse the speculative
+    #    search when it was for the confirmed name; else do a fresh one) ────────
     if confirmed and api_key:
         progress("search_step", {"step": "profiles", "message": f"Finding social profiles for {confirmed}"})
         q("name_search")
-        profiles = name_social_search(confirmed, api_key)
+        profiles = None
+        if prof_future is not None and spec_name == confirmed:
+            try:
+                profiles = prof_future.result(timeout=30)
+            except Exception:
+                profiles = None
+        if profiles is None:
+            profiles = name_social_search(confirmed, api_key)
         if profiles:
             hit("name_search")
         for p in profiles:
             leads.append({"url": p["url"], "engine": "name_search", "title": p.get("title", "")})
+    # release the speculative executor
+    _prof_ex.shutdown(wait=False)
 
     # ── SCORE + pick best ─────────────────────────────────────────────────────
     scored = score_leads(leads, confirmed, result["verification_score"])
