@@ -14,57 +14,16 @@ blockchain — then re‑verifies it on demand.
 
 ```mermaid
 flowchart TD
-    IN([📷 Input: a face photo<br/>JPG · PNG · WebP · AVIF · HEIC]):::io
-    IN --> NORM[Normalize any format → RGB JPEG]:::s1
-
-    subgraph S1 [STAGE 1 · Detect & Encode — face/detect.py]
-        direction TB
-        NORM --> DET[MTCNN detect + align → 224×224 crop]:::s1
-        DET --> FH[SHA-256 → face_hash]:::s1
-        DET --> EMB[ArcFace + FaceNet512 + VGG-Face embeddings<br/>+ pose + EXIF]:::s1
-    end
-
-    EMB --> FORK{{run every engine IN PARALLEL}}:::fork
-
-    subgraph S2 [STAGE 2 · Identify & Search — search/]
-        direction TB
-        FORK --> LENS[Google Lens<br/>ai_overview → spaCy NER → name]:::s2
-        FORK --> REK[AWS Rekognition<br/>celebrity recognizer]:::s2
-        FORK --> IDX[Curated local index<br/>17,948-face ArcFace gallery]:::s2
-        FORK --> OPT[optional: Vision · Yandex<br/>Bing · TinEye · FaceCheck]:::s2opt
-
-        LENS --> VOTE[Pool a name vote]:::s2
-        REK --> VOTE
-        IDX --> VOTE
-        OPT -.-> VOTE
-
-        VOTE --> VBC{{🛡️ VERIFY-BEFORE-CLAIM<br/>download reference photos →<br/>DeepFace re-match vs input}}:::gate
-        VBC -->|multiple refs agree| PROF[Find real profile — name →<br/>LinkedIn / Instagram / GitHub / …<br/>profiles rank above posts]:::s2
-        VBC -->|no agreement| NC[not confirmed<br/>never a false identity]:::reject
-        PROF --> CH[Download matched image bytes<br/>→ SHA-256 content_hash]:::s2
-    end
-
-    CH --> PAY
-
-    subgraph S3 [STAGE 3 · Anchor & Verify — blockchain/]
-        direction TB
-        PAY[Build self-describing JSON payload<br/>who · how verified · confidence · source]:::s3
-        PAY --> ANCH[SHA-256 payload → FaceProof.anchor<br/>Hardhat / Ethereum Sepolia]:::s3
-        ANCH --> RV[getProof → on-chain hash == local hash]:::s3
-        RV --> TAMP[Tamper test: alter one field →<br/>hash absent from ledger]:::s3
-    end
-
-    TAMP --> OUT([✅ Verified, tamper-evident record]):::io
-    NC -.->|anchor proof-of-scan| PAY
+    IN([📷 Face photo]) --> S1[<b>Stage 1 — Detect & Encode</b><br/>MTCNN crop → face_hash + embeddings]
+    S1 --> S2[<b>Stage 2 — Identify & Search</b><br/>Lens + Rekognition + local index<br/>→ verify-before-claim → real profile]
+    S2 --> S3[<b>Stage 3 — Anchor & Verify</b><br/>SHA-256 → FaceProof contract<br/>→ re-verify + tamper test]
+    S3 --> OUT([✅ Tamper-evident record])
 
     classDef io fill:#141f2b,stroke:#5d6b7b,color:#eef2f7;
     classDef s1 fill:#0f1720,stroke:#60a5fa,color:#dbe6f5;
     classDef s2 fill:#0f1720,stroke:#22d3ee,color:#d6f5fb;
-    classDef s2opt fill:#0f1720,stroke:#3a4a5a,color:#9dabbd;
     classDef s3 fill:#0f1720,stroke:#a78bfa,color:#e7dffb;
-    classDef gate fill:#10261c,stroke:#34d399,color:#d5f7e8;
-    classDef reject fill:#2a1418,stroke:#fb7185,color:#ffd9de;
-    classDef fork fill:#1a1205,stroke:#fbbf24,color:#ffedbf;
+    class IN,OUT io; class S1 s1; class S2 s2; class S3 s3;
 ```
 
 <sub>Every external call **degrades gracefully** — a missing key or failed engine lowers confidence but never crashes the run. If no identity verifies, the pipeline still anchors a **proof‑of‑scan** record (`match_found: false`), so it always completes end‑to‑end.</sub>
