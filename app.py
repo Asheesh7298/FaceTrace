@@ -343,6 +343,23 @@ async def health():
     # Models warm? (face_crop from a prior run indicates detection ran)
     checks["models_warm"] = Path("output/_warmup.jpg").exists()
 
+    # Which identity engines are active (for the UI header).
+    try:
+        from search.rekognition import rekognition_available
+        from search.vision import vision_available
+        from search.facecheck import facecheck_available
+        checks["engines"] = {
+            "google_lens": bool(_os.getenv("SERPAPI_KEY")),
+            "aws_rekognition": rekognition_available(),
+            "curated_db": checks["curated_index"].get("loaded", False),
+            "google_vision": vision_available(),
+            "facecheck": facecheck_available(),
+            "bing": _os.getenv("ENABLE_BING") == "1",
+            "yandex": _os.getenv("ENABLE_YANDEX") == "1",
+        }
+    except Exception:
+        checks["engines"] = {}
+
     required = ["serpapi_key", "spacy_ner"]
     ready = all(checks.get(k) for k in required) and checks["curated_index"].get("loaded")
     return {"ready": bool(ready), "checks": checks,

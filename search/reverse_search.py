@@ -407,6 +407,25 @@ def _hash_b64_thumb(b64: str, output_dir: str) -> Optional[dict]:
 
 # ─── Candidate scoring (pooled, biometric-aware) ─────────────────────────────
 
+# A person's own PROFILE page (what we want) vs a POST/article that merely mentions
+# them. Profiles have shallow paths (/handle, /in/x, /@x); posts are deep.
+_PROFILE_HINTS = ("/in/", "/@")
+_POST_HINTS = ("/p/", "/posts/", "/reel/", "/status/", "/activity-", "/watch",
+               "/pulse/", "/photo", "/video", "/news/", "/story", "/article")
+
+
+def _is_profile(url: str) -> tuple[bool, bool]:
+    """Return (is_profile, is_post)."""
+    path = urlparse(url).path.rstrip("/").lower()
+    is_post = any(h in path for h in _POST_HINTS)
+    if is_post:
+        return False, True
+    if any(h in path for h in _PROFILE_HINTS):
+        return True, False
+    segs = [s for s in path.split("/") if s]
+    return len(segs) <= 1, False      # a single shallow segment = a profile page
+
+
 def score_leads(leads: list[dict], confirmed_name: Optional[str],
                 verification_score: float) -> list[dict]:
     name_parts = [p.lower() for p in (confirmed_name or "").split() if len(p) > 2]
@@ -420,9 +439,12 @@ def score_leads(leads: list[dict], confirmed_name: Optional[str],
         title = (c.get("title") or "").lower()
         bio = float(c.get("biometric") or 0.0)
         name_in = any(p in url.lower() or p in title for p in name_parts)
-        # Composite in [0,1]: biometric match + platform quality + name + identity verify
-        composite = bio * 0.35 + (plat / 10) * 0.30 + \
-                    (0.20 if name_in else 0.0) + verification_score * 0.15
+        is_profile, is_post = _is_profile(url)
+        # A profile page is the real deliverable → boost it; a post that only
+        # mentions the person → slight penalty so it never beats the real profile.
+        profile_adj = 0.14 if is_profile else (-0.06 if is_post else 0.0)
+        composite = (bio * 0.34 + (plat / 10) * 0.28 + (0.18 if name_in else 0.0)
+                     + verification_score * 0.12 + profile_adj)
         scored.append({
             "url": url,
             "title": c.get("title", ""),
@@ -430,8 +452,9 @@ def score_leads(leads: list[dict], confirmed_name: Optional[str],
             "platform_score": plat,
             "biometric": round(bio, 3),
             "name_in_result": name_in,
+            "is_profile": is_profile,
             "engines": [c.get("engine", "?")],
-            "composite_score": round(composite, 4),
+            "composite_score": round(max(0.0, composite), 4),
         })
     scored.sort(key=lambda x: x["composite_score"], reverse=True)
     return scored

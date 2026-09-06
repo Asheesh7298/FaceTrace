@@ -44,8 +44,35 @@ from rich import print as rprint
 
 load_dotenv()
 
+# Broaden input support so drag-and-dropped AVIF / HEIC / WebP (common from
+# Google Images / phones) don't crash Stage 1. WebP/PNG/JPEG are native to PIL.
+try:
+    import pillow_avif  # noqa: F401  — registers the AVIF opener
+except Exception:
+    pass
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except Exception:
+    pass
+
 console = Console()
 logger  = logging.getLogger("pipeline")
+
+
+def _normalize_image(path: str, output_dir: str) -> str:
+    """Convert ANY supported input to a standard RGB JPEG (respecting EXIF
+    orientation) so MTCNN, DeepFace and the Lens image host all read it reliably.
+    Returns the normalized path, or the original if conversion fails."""
+    try:
+        from PIL import Image, ImageOps
+        img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+        out = str(Path(output_dir) / "input.jpg")
+        img.save(out, "JPEG", quality=95)
+        return out
+    except Exception as e:
+        logger.warning(f"Image normalize failed ({e}); using original")
+        return path
 
 
 def setup_logging(output_dir: str):
@@ -150,6 +177,10 @@ def run_pipeline(image_path: str, network: str = "localhost", output_dir: str = 
         "elapsed_seconds": None,
         "pipeline_success": False,
     }
+
+    # Normalize any input format (AVIF/HEIC/WebP/…) to a standard RGB JPEG so
+    # every downstream tool reads it. The record keeps the original path above.
+    image_path = _normalize_image(image_path, output_dir)
 
     # ════════════════════════════════════════════════════════════════════════
     # STAGE 1 — Face Detection & Encoding

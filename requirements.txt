@@ -8,6 +8,8 @@ mtcnn==0.1.1
 
 # Image Quality & Processing
 Pillow==10.3.0
+pillow-avif-plugin==1.4.6     # read AVIF inputs (common from Google Images)
+pillow-heif==0.16.0          # read HEIC/HEIF inputs (iPhone photos)
 scikit-image==0.22.0
 scipy==1.13.1
 imagehash==4.3.1

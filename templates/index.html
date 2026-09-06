@@ -181,9 +181,7 @@
     <div><h1>FaceTrace</h1><p>Face identification → social match → blockchain proof</p></div>
   </div>
   <div class="engines" id="engines">
-    <span class="chip on"><span class="d"></span>Google Lens</span>
-    <span class="chip on"><span class="d"></span>Curated Index</span>
-    <span class="chip" id="chip-fc"><span class="d"></span>FaceCheck.ID</span>
+    <span id="engine-chips"></span>
     <span class="chip" id="chip-net"><span class="d"></span>Localhost</span>
   </div>
 </div></header>
@@ -243,7 +241,7 @@
 const $=id=>document.getElementById(id);
 let file=null, sample=null, net='localhost', t0=null, timer=null, runFile=null;
 
-document.addEventListener('DOMContentLoaded',()=>{loadSamples();loadHistory();
+document.addEventListener('DOMContentLoaded',()=>{loadSamples();loadHistory();loadEngines();
   $('drop').addEventListener('dragover',e=>{e.preventDefault();$('drop').classList.add('over')});
   $('drop').addEventListener('dragleave',()=>$('drop').classList.remove('over'));
   $('drop').addEventListener('drop',e=>{e.preventDefault();$('drop').classList.remove('over');if(e.dataTransfer.files[0])pickFile(e.dataTransfer.files[0])});
@@ -254,6 +252,20 @@ document.addEventListener('DOMContentLoaded',()=>{loadSamples();loadHistory();
   $('htoggle').addEventListener('click',()=>{$('hlist').classList.toggle('open');
     $('harrow').textContent=$('hlist').classList.contains('open')?'▲':'▼';});
 });
+
+async function loadEngines(){
+  try{
+    const d = await (await fetch('/api/health')).json();
+    const e = (d.checks && d.checks.engines) || {};
+    const idx = (d.checks && d.checks.curated_index) || {};
+    const idxLabel = idx.faces ? `Index ${Math.round(idx.faces/1000)}k` : 'Curated Index';
+    const order = [['google_lens','Google Lens'],['aws_rekognition','AWS Rekognition'],
+      ['curated_db', idxLabel],['google_vision','Google Vision'],['facecheck','FaceCheck.ID']];
+    $('engine-chips').innerHTML = order
+      .filter(([k])=> k==='google_lens' || k==='curated_db' || e[k])  // always show core; extras only if on
+      .map(([k,label])=>`<span class="chip ${e[k]||k==='google_lens'||(k==='curated_db'&&idx.loaded)?'on':''}" title="${e[k]?'active':'inactive'}"><span class="d"></span>${label}</span>`).join('');
+  }catch(_){}
+}
 
 async function loadSamples(){
   try{const s=await(await fetch('/api/samples')).json();const g=$('samples');g.innerHTML='';
@@ -311,7 +323,7 @@ function log(lv,m){const d=new Date().toTimeString().slice(0,8);const l=document
   l.className='ln '+lv;l.innerHTML=`<span class="tm">[${d}]</span> <span class="m">${esc(m)}</span>`;
   $('log').appendChild(l);$('log').scrollTop=$('log').scrollHeight;}
 
-const ENG={facecheck:'FaceCheck.ID',google_lens:'Google Lens',curated_db:'Curated Index',name_search:'Name Search',lens_visual:'Lens Visual',yandex:'Yandex'};
+const ENG={facecheck:'FaceCheck.ID',google_lens:'Google Lens',aws_rekognition:'AWS Rekognition',google_vision:'Google Vision',curated_db:'Curated Index',name_search:'Name Search',lens_visual:'Lens Visual',yandex:'Yandex',bing:'Bing',tineye:'TinEye'};
 function handleFromUrl(u){try{const p=new URL(u);const seg=p.pathname.split('/').filter(Boolean);
   const d=p.hostname.replace('www.','');if(/instagram|twitter|x\.com|tiktok|facebook/.test(d)&&seg[0]&&!['p','reel','tv','explore','status'].includes(seg[0]))return '@'+seg[0];
   return d;}catch(_){return u;}}
@@ -358,8 +370,11 @@ function render(result){
     const mc=s.matched_content;if(mc&&mc.content_hash)h+=`<div class="dl"><span class="k">Content hash</span><span class="hash" onclick="cp('${mc.content_hash}')">${trunc(mc.content_hash)}</span></div>`;
   }
   if(engines)h+=`<div class="lbl" style="margin:12px 0 6px">Engines that found results</div><div class="tags">${engines}</div>`;
-  const cands=s.all_candidates||[];
-  if(cands.length>1){h+=`<details><summary>All ${cands.length} candidates</summary>`+cands.map(c=>`<div class="cand"><a href="${c.url}" target="_blank">${esc((c.url||'').slice(0,56))}</a><span class="meta">${esc(c.platform||'')} · ${(c.composite_score||0).toFixed(2)}</span></div>`).join('')+`</details>`;}
+  // Show only RELEVANT candidates (the person's name appears, or a confident score),
+  // capped — hides the look-alike / unrelated tail.
+  const allc=s.all_candidates||[];
+  const cands=allc.filter(c=>c.name_in_result || (c.composite_score||0)>=0.5).slice(0,10);
+  if(cands.length>1){h+=`<details><summary>Top ${cands.length} relevant links${allc.length>cands.length?` (of ${allc.length})`:''}</summary>`+cands.map(c=>`<div class="cand"><a href="${c.url}" target="_blank">${esc((c.url||'').slice(0,56))}</a><span class="meta">${esc(c.platform||'')}${c.is_profile?' · profile':''} · ${(c.composite_score||0).toFixed(2)}</span></div>`).join('')+`</details>`;}
   $('idb').innerHTML=h;
 
   const bv=!!bc.verified;
