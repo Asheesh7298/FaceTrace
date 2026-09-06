@@ -30,6 +30,16 @@ flowchart TD
 
 ---
 
+## In 30 seconds
+
+- **What:** a face photo → the person's identity → their real social profile → a tamper‑proof record on Ethereum.
+- **How it stays accurate:** **verify‑before‑claim** — it downloads reference photos and re‑matches them before claiming any name, so it never shows the wrong person.
+- **Genuine search, not hardcoded:** every identity is computed at runtime by Google Lens + AWS Rekognition + a 17,948‑face local index running in parallel.
+- **Blockchain proof:** SHA‑256 of the finding is anchored on‑chain; a one‑click **tamper test** shows any edit makes the hash vanish from the ledger.
+- **Run it:** `python app.py` → open `http://localhost:8000` (health check at `/api/health`).
+
+---
+
 ## Live example
 
 Input a photo of Tom Hanks → the web UI shows, end‑to‑end in ~40s:

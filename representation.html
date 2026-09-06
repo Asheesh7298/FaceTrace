@@ -3,236 +3,128 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FaceTrace — How It Works</title>
+<title>FaceTrace — Quick Guide</title>
 <style>
   *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
   :root{
-    --bg:#070b10; --panel:#0f1720; --panel2:#141f2b; --line:rgba(255,255,255,.07);
+    --bg:#070b10; --panel:#0f1720; --panel2:#141f2b; --line:rgba(255,255,255,.08);
     --tx:#eef2f7; --tx2:#9dabbd; --tx3:#5d6b7b;
     --cyan:#22d3ee; --green:#34d399; --amber:#fbbf24; --violet:#a78bfa; --blue:#60a5fa;
-    --grad:linear-gradient(120deg,#22d3ee,#34d399);
-    --mono:ui-monospace,Consolas,monospace;
+    --grad:linear-gradient(120deg,#22d3ee,#34d399); --mono:ui-monospace,Consolas,monospace;
   }
-  html{scroll-behavior:smooth}
-  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--tx);
-    line-height:1.65;-webkit-font-smoothing:antialiased}
-  .wrap{max-width:940px;margin:0 auto;padding:0 24px}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--tx);line-height:1.6;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:0 24px}
+  section{padding:44px 0;border-top:1px solid var(--line)}
+  h2{font-size:14px;font-weight:800;letter-spacing:2px;text-transform:uppercase;color:var(--cyan);margin-bottom:18px}
+  b{color:var(--tx)}
 
-  /* header row on each section */
-  .eyebrow{display:inline-flex;align-items:center;gap:10px;margin-bottom:14px}
-  .eyebrow .num{display:grid;place-items:center;width:30px;height:30px;border-radius:9px;
-    background:var(--grad);color:#04121a;font-weight:900;font-size:15px}
-  .eyebrow .lbl{font-size:12.5px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--cyan)}
-  h2{font-size:27px;font-weight:800;letter-spacing:-.5px;margin-bottom:10px}
-  section{padding:52px 0;border-top:1px solid var(--line)}
-  p{color:var(--tx2)} p b{color:var(--tx)}
-
-  /* HERO */
-  .hero{padding:96px 0 76px;text-align:center;
-    background:radial-gradient(760px 360px at 50% -10%,rgba(34,211,238,.14),transparent 70%)}
-  .logo{width:74px;height:74px;border-radius:20px;background:var(--grad);display:grid;place-items:center;
-    font-size:38px;margin:0 auto 20px;box-shadow:0 16px 46px rgba(34,211,238,.3)}
-  .hero h1{font-size:62px;font-weight:900;letter-spacing:-2px;
+  /* hero */
+  .hero{padding:70px 0 50px;text-align:center;
+    background:radial-gradient(680px 320px at 50% -10%,rgba(34,211,238,.14),transparent 70%)}
+  .logo{width:64px;height:64px;border-radius:18px;background:var(--grad);display:grid;place-items:center;
+    font-size:32px;margin:0 auto 16px;box-shadow:0 14px 40px rgba(34,211,238,.3)}
+  .hero h1{font-size:54px;font-weight:900;letter-spacing:-2px;
     background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .hero .tag{font-size:19px;color:var(--tx2);max-width:640px;margin:14px auto 20px}
-  .hero .badge{display:inline-block;font-size:12.5px;font-weight:700;letter-spacing:1px;text-transform:uppercase;
-    color:var(--green);background:rgba(52,211,153,.1);border:1px solid rgba(52,211,153,.25);border-radius:99px;padding:7px 16px}
-  .pills{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:28px}
-  .pills span{font-family:var(--mono);font-size:13px;color:var(--tx2);background:var(--panel);
-    border:1px solid var(--line);border-radius:8px;padding:7px 13px}
-  .pills span b{color:var(--green);font-weight:700}
-  .pills i{color:var(--tx3);align-self:center;font-style:normal}
+  .hero p{font-size:19px;color:var(--tx2);max-width:600px;margin:12px auto 0}
 
-  /* cards */
-  .cards{display:grid;gap:16px;grid-template-columns:repeat(2,1fr)}
-  @media(max-width:720px){.cards{grid-template-columns:1fr}}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}
-  .card h3{font-size:16px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:9px}
-  .card p{font-size:14.5px}
-  .card .ic{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;font-size:18px;
-    background:rgba(34,211,238,.12);flex-shrink:0}
+  /* 3-stage flow */
+  .flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;align-items:stretch;gap:8px}
+  @media(max-width:760px){.flow{grid-template-columns:1fr}.flow .ar{display:none}}
+  .stg{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .stg .n{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+  .stg .t{font-size:16px;font-weight:800;margin-bottom:4px}
+  .stg .d{color:var(--tx2);font-size:13.5px}
+  .stg.a{border-color:rgba(96,165,250,.5)} .stg.a .n{color:var(--blue)}
+  .stg.b{border-color:rgba(34,211,238,.5)} .stg.b .n{color:var(--cyan)}
+  .stg.c{border-color:rgba(167,139,250,.5)} .stg.c .n{color:var(--violet)}
+  .ar{display:grid;place-items:center;color:var(--tx3);font-size:22px;font-weight:700}
+  .io{text-align:center;color:var(--tx2);font-family:var(--mono);font-size:14px;margin:16px 0}
+  .io b{color:var(--green)}
 
-  /* pipeline diagram */
-  .flow{display:flex;flex-direction:column;align-items:center}
-  .node{width:100%;max-width:660px;background:var(--panel);border:1px solid var(--line);
-    border-radius:13px;padding:18px 22px;position:relative}
-  .node .k{position:absolute;top:-10px;left:20px;font-size:11px;font-weight:800;letter-spacing:1.5px;
-    text-transform:uppercase;padding:3px 10px;border-radius:99px;color:#04121a}
-  .node .t{font-weight:800;font-size:16px;margin-bottom:3px}
-  .node .d{color:var(--tx2);font-size:13.5px}
-  .node.io{max-width:440px;text-align:center;background:var(--panel2);border-style:dashed}
-  .node.s1{border-color:rgba(96,165,250,.45)} .node.s1 .k{background:var(--blue)}
-  .node.s2{border-color:rgba(34,211,238,.45)} .node.s2 .k{background:var(--cyan)}
-  .node.s3{border-color:rgba(167,139,250,.45)} .node.s3 .k{background:var(--violet)}
-  .down{width:2px;height:30px;background:linear-gradient(var(--tx3),transparent);position:relative;margin:3px 0}
-  .down::after{content:'▼';position:absolute;bottom:-3px;left:-5px;color:var(--tx3);font-size:11px}
+  /* one-liner point */
+  .key{background:rgba(52,211,153,.08);border:1px solid rgba(52,211,153,.3);border-radius:12px;
+    padding:16px 20px;font-size:15.5px;color:var(--tx)}
+  .key b{color:var(--green)}
 
-  /* numbered steps */
-  .steps{counter-reset:s;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px 24px}
-  .stp{counter-increment:s;display:flex;gap:16px;padding:16px 0;border-bottom:1px solid var(--line)}
-  .stp:last-child{border:0}
-  .stp::before{content:counter(s);flex-shrink:0;width:30px;height:30px;border-radius:50%;
-    background:rgba(34,211,238,.14);color:var(--cyan);display:grid;place-items:center;font-weight:800;font-size:14px}
-  .stp b{color:var(--tx)} .stp p{font-size:14.5px;margin-top:1px}
+  /* timed script */
+  .row{display:flex;gap:16px;padding:14px 0;border-bottom:1px solid var(--line)}
+  .row:last-child{border:0}
+  .row .tm{flex-shrink:0;width:88px;font-family:var(--mono);font-size:13px;font-weight:700;color:var(--cyan)}
+  .row .say b{color:var(--tx)} .row .say{font-size:14.5px;color:var(--tx2)}
+  .row .say .do{display:block;color:var(--tx3);font-size:13px;margin-top:2px}
 
-  /* chip rows */
-  .chips{display:flex;flex-wrap:wrap;gap:9px;margin:6px 0 4px}
-  .chip{font-size:13px;font-weight:600;background:var(--panel);border:1px solid var(--line);
-    border-radius:99px;padding:7px 14px;color:var(--tx)}
-  .chip.on{border-color:rgba(52,211,153,.4)} .chip.on::before{content:'●';color:var(--green);font-size:8px;margin-right:7px;vertical-align:middle}
-  .lead{font-size:13px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--tx3);margin:18px 0 2px}
-
-  /* stat tiles */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
-  @media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
-  .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;text-align:center}
-  .stat .v{font-size:38px;font-weight:900;background:var(--grad);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
-  .stat .l{color:var(--tx2);font-size:13px;margin-top:2px}
-
-  /* blockchain mini cards */
-  .bc{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-  @media(max-width:720px){.bc{grid-template-columns:1fr}}
-  .bc .card h3{font-size:15px}
-
-  code{font-family:var(--mono);font-size:13px;background:var(--panel2);color:var(--cyan);padding:2px 7px;border-radius:5px}
-  .warn{margin-top:18px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.28);
-    border-radius:11px;padding:13px 17px;color:var(--amber);font-size:14px;font-weight:600}
-  .stack{color:var(--tx2);font-size:15px;line-height:2}
-  .stack b{color:var(--tx)}
-  .foot{text-align:center;padding:44px 0;color:var(--tx3);font-size:13px;border-top:1px solid var(--line)}
+  code{font-family:var(--mono);font-size:13px;background:var(--panel2);color:var(--cyan);padding:2px 6px;border-radius:5px}
+  .warn{margin-top:16px;background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.28);
+    border-radius:11px;padding:12px 16px;color:var(--amber);font-size:14px;font-weight:600}
+  .facts{display:flex;flex-wrap:wrap;gap:8px}
+  .facts span{font-size:13px;color:var(--tx2);background:var(--panel);border:1px solid var(--line);
+    border-radius:8px;padding:7px 12px} .facts b{color:var(--green)}
+  .foot{text-align:center;padding:36px 0;color:var(--tx3);font-size:13px;border-top:1px solid var(--line)}
 </style>
 </head>
 <body>
 
-<!-- HERO -->
 <div class="hero"><div class="wrap">
   <div class="logo">🛰️</div>
   <h1>FaceTrace</h1>
-  <p class="tag">A face → who they are → their real social profile → a tamper-evident record on a blockchain.</p>
-  <span class="badge">HH Goa 2026 · Task 3 — Face Identification &amp; Blockchain Verification</span>
-  <div class="pills">
-    <span>face</span><i>→</i><span><b>identify</b></span><i>→</i><span><b>verify</b></span>
-    <i>→</i><span><b>find profile</b></span><i>→</i><span><b>anchor</b></span><i>→</i><span><b>tamper-test</b></span>
-  </div>
+  <p>A face → who they are → their real profile → a tamper-proof record on a blockchain.</p>
 </div></div>
 
-<!-- 1 -->
+<!-- THE PIPELINE -->
 <section><div class="wrap">
-  <div class="eyebrow"><span class="num">1</span><span class="lbl">The idea</span></div>
-  <h2>What it does</h2>
-  <p style="max-width:720px;margin-bottom:22px">You give it a face photo. It figures out <b>who</b> the person is, proves the identity is real,
-  finds their <b>actual profile</b> on the web, and writes a cryptographic hash of that finding onto a blockchain —
-  so the record can never be silently changed.</p>
-  <div class="cards">
-    <div class="card"><h3><span class="ic">🧠</span>Identify</h3><p>Several independent engines figure out who the face is — in parallel.</p></div>
-    <div class="card"><h3><span class="ic">🛡️</span>Verify</h3><p>Verify-before-claim re-matches against reference photos, so it never claims a wrong identity.</p></div>
-    <div class="card"><h3><span class="ic">🔎</span>Find</h3><p>Search the web for the person's real profile — LinkedIn, Instagram, GitHub, Devfolio.</p></div>
-    <div class="card"><h3><span class="ic">⛓️</span>Prove</h3><p>Anchor a SHA-256 of the finding on Ethereum, then re-verify and tamper-test it.</p></div>
-  </div>
-</div></section>
-
-<!-- 2 -->
-<section><div class="wrap">
-  <div class="eyebrow"><span class="num">2</span><span class="lbl">The pipeline</span></div>
-  <h2>Three stages</h2>
-  <p style="margin-bottom:26px">Stage 2 runs every identity engine in parallel, pools a vote, and only claims what it can verify.</p>
+  <h2>How it works — 3 stages</h2>
+  <div class="io">📷 <b>face photo</b> in</div>
   <div class="flow">
-    <div class="node io"><div class="t">📷 Input — a face photo</div><div class="d">JPG · PNG · WebP · AVIF · HEIC (auto-normalized)</div></div>
-    <div class="down"></div>
-    <div class="node s1"><span class="k">Stage 1</span><div class="t">Detect &amp; encode</div>
-      <div class="d">MTCNN finds and aligns the face → <b>SHA-256 face hash</b> → ArcFace + FaceNet512 + VGG-Face embeddings.</div></div>
-    <div class="down"></div>
-    <div class="node s2"><span class="k">Stage 2</span><div class="t">Identify &amp; search</div>
-      <div class="d">Engines run at once and vote on the name → verify-before-claim → find the real profile (profiles rank above posts).</div></div>
-    <div class="down"></div>
-    <div class="node s3"><span class="k">Stage 3</span><div class="t">Anchor on-chain</div>
-      <div class="d">Hash the whole finding (SHA-256) → store in the <code>FaceProof</code> contract → read it back to confirm.</div></div>
-    <div class="down"></div>
-    <div class="node io"><div class="t">✅ Verified, tamper-evident record</div><div class="d">re-verify anytime · alter one byte → hash vanishes from the ledger</div></div>
+    <div class="stg a"><div class="n">Stage 1</div><div class="t">Detect &amp; encode</div><div class="d">MTCNN finds the face → SHA-256 fingerprint + face embeddings.</div></div>
+    <div class="ar">→</div>
+    <div class="stg b"><div class="n">Stage 2</div><div class="t">Identify &amp; search</div><div class="d">Lens + AWS + local index name the person, then find their real profile.</div></div>
+    <div class="ar">→</div>
+    <div class="stg c"><div class="n">Stage 3</div><div class="t">Blockchain</div><div class="d">Hash the finding → anchor on-chain → re-verify + tamper test.</div></div>
   </div>
+  <div class="io"><b>verified, tamper-evident record</b> out</div>
 </div></section>
 
-<!-- 3 -->
+<!-- THE ONE THING -->
 <section><div class="wrap">
-  <div class="eyebrow"><span class="num">3</span><span class="lbl">The key idea</span></div>
-  <h2>Verify-before-claim</h2>
-  <p style="max-width:720px;margin-bottom:22px">Reverse-image search is full of look-alikes, so FaceTrace never trusts a raw match — it <b>proves</b> the identity first.</p>
-  <div class="steps">
-    <div class="stp"><div><b>A candidate name is proposed</b><p>by Google Lens, AWS Rekognition, or the local index — a hypothesis, not a claim.</p></div></div>
-    <div class="stp"><div><b>Download independent reference photos</b><p>several official photos of that person are fetched from the web.</p></div></div>
-    <div class="stp"><div><b>Face-match each one against the input</b><p><code>DeepFace.verify</code> (ArcFace) — the name is claimed only if multiple references agree.</p></div></div>
-    <div class="stp"><div><b>No agreement → honest "not confirmed"</b><p>a wrong guess is never shown as a false identity — the demo can't be fooled.</p></div></div>
-  </div>
+  <h2>The one thing that makes it accurate</h2>
+  <div class="key">🛡️ <b>Verify-before-claim.</b> Before showing any name, FaceTrace downloads real
+  reference photos of that person and re-matches them against the input. It claims an identity
+  <b>only if the faces actually match</b> — so it never shows a wrong person. A guess it can't confirm
+  is shown as <i>"not confirmed"</i>, never as a fake result.</div>
 </div></section>
 
-<!-- 4 -->
+<!-- VIDEO SCRIPT -->
 <section><div class="wrap">
-  <div class="eyebrow"><span class="num">4</span><span class="lbl">Coverage</span></div>
-  <h2>The engines run in parallel</h2>
-  <p style="margin-bottom:6px">More independent signals = more faces identified; agreement between engines = high confidence.</p>
-  <div class="lead">Active</div>
-  <div class="chips">
-    <span class="chip on">Google Lens</span><span class="chip on">AWS Rekognition</span>
-    <span class="chip on">Curated Index · 17,948</span><span class="chip on">Name Search</span><span class="chip on">Verify-before-claim</span>
-  </div>
-  <div class="lead">Optional — turn on with a key</div>
-  <div class="chips">
-    <span class="chip">Google Vision</span><span class="chip">Yandex</span><span class="chip">Bing</span><span class="chip">TinEye</span><span class="chip">FaceCheck.ID</span>
-  </div>
-</div></section>
-
-<!-- 5 -->
-<section><div class="wrap">
-  <div class="eyebrow"><span class="num">5</span><span class="lbl">The proof</span></div>
-  <h2>The blockchain record</h2>
-  <p style="max-width:720px;margin-bottom:22px">What goes on-chain is a SHA-256 of a self-describing payload: who was identified, how it was
-  verified, confidence, the source profile, and the hash of the matched image.</p>
-  <div class="bc">
-    <div class="card"><h3><span class="ic" style="background:rgba(167,139,250,.14)">📜</span>Anchor</h3><p>The <code>FaceProof</code> contract stores one immutable record per hash.</p></div>
-    <div class="card"><h3><span class="ic" style="background:rgba(52,211,153,.14)">🔁</span>Re-verify</h3><p>Read it back, confirm the stored hash equals the fresh one.</p></div>
-    <div class="card"><h3><span class="ic" style="background:rgba(251,113,133,.14)">🧪</span>Tamper test</h3><p>Change one field → its hash is absent from the ledger.</p></div>
-  </div>
-  <p style="margin-top:18px">Runs on <b>Hardhat local</b> (instant demo) or <b>Ethereum Sepolia</b> (public) — contract <code>0x56584844…7e6a3e</code>.</p>
-</div></section>
-
-<!-- 6 -->
-<section><div class="wrap">
-  <div class="eyebrow"><span class="num">6</span><span class="lbl">By the numbers</span></div>
-  <h2>Key stats</h2>
-  <div class="stats" style="margin-top:6px">
-    <div class="stat"><div class="v">17,948</div><div class="l">faces in the local index</div></div>
-    <div class="stat"><div class="v">5+</div><div class="l">parallel identity engines</div></div>
-    <div class="stat"><div class="v">3</div><div class="l">face-encoding models</div></div>
-    <div class="stat"><div class="v">~40s</div><div class="l">end-to-end per face</div></div>
-  </div>
-</div></section>
-
-<!-- 7 -->
-<section><div class="wrap">
-  <div class="eyebrow"><span class="num">7</span><span class="lbl">Built with</span></div>
-  <h2>Tech stack</h2>
-  <p class="stack"><b>Vision:</b> MTCNN · InsightFace/ArcFace · DeepFace · spaCy<br>
-  <b>Identity:</b> Google Lens (SerpApi) · AWS Rekognition · Wikidata + Modal<br>
-  <b>Blockchain:</b> Solidity/FaceProof · Hardhat + web3.py · Ethereum Sepolia<br>
-  <b>App:</b> FastAPI + SSE · Pillow (AVIF/HEIC)</p>
-</div></section>
-
-<!-- 8 -->
-<section><div class="wrap">
-  <div class="eyebrow"><span class="num">8</span><span class="lbl">For the recording</span></div>
-  <h2>Demo flow 🎬</h2>
-  <div class="steps" style="margin-top:6px">
-    <div class="stp"><div><b>Open <code>/api/health</code> first</b><p>show everything is green (live, not staged).</p></div></div>
-    <div class="stp"><div><b>Drop in a face &amp; hit Start scan</b><p>watch the 3 stages stream live.</p></div></div>
-    <div class="stp"><div><b>Point out the identity card</b><p>name, side-by-side face match, engines that agreed, real profile link.</p></div></div>
-    <div class="stp"><div><b>Show the blockchain proof</b><p>TX hash, block, contract, "Verified on-chain".</p></div></div>
-    <div class="stp"><div><b>Click "Tamper test" 🧪</b><p>genuine record verifies, the altered one is gone from the ledger.</p></div></div>
-    <div class="stp"><div><b>(Optional) run a 2nd &amp; 3rd face</b><p>show it works on different people — proves it's a real search.</p></div></div>
-  </div>
+  <h2>🎬 Demo script — 3 to 4 minutes</h2>
+  <div class="row"><div class="tm">0:00–0:30</div><div class="say"><b>Intro.</b> "FaceTrace takes a face, finds who it is and their real profile, and proves it on a blockchain."
+    <span class="do">show this page's 3-stage flow, then switch to the app.</span></div></div>
+  <div class="row"><div class="tm">0:30–0:50</div><div class="say"><b>Prove it's live.</b> Open <code>/api/health</code> — all green.
+    <span class="do">"Everything's running live — nothing staged."</span></div></div>
+  <div class="row"><div class="tm">0:50–2:00</div><div class="say"><b>Run face #1.</b> Drop a photo, hit Start. Point at the identity card: name, the side-by-side face match, and the real profile link.
+    <span class="do">"Notice it verified the face against reference photos before claiming."</span></div></div>
+  <div class="row"><div class="tm">2:00–3:00</div><div class="say"><b>Blockchain + tamper test.</b> Show the TX / "verified on-chain", then click <b>Tamper test</b>.
+    <span class="do">"Genuine record verifies; the altered one is gone from the ledger — provably tamper-proof."</span></div></div>
+  <div class="row"><div class="tm">3:00–3:40</div><div class="say"><b>One more face.</b> Run a 2nd person to show it's a real search, not hardcoded.
+    <span class="do">"Works on anyone findable — a celebrity and a semi-famous Indian figure."</span></div></div>
+  <div class="row"><div class="tm">3:40–4:00</div><div class="say"><b>Close.</b> "Real identity search, verified before claiming, anchored on-chain. That's FaceTrace."</div></div>
   <div class="warn">⚠️ Keep <code>npx hardhat node</code> running in its own terminal, or Stage 3 can't anchor.</div>
 </div></section>
 
-<div class="foot">FaceTrace — face identification → social match → blockchain proof · HH Goa 2026 Task 3</div>
+<!-- QUICK FACTS -->
+<section><div class="wrap">
+  <h2>Quick facts</h2>
+  <div class="facts">
+    <span><b>17,948</b> faces in local index</span>
+    <span><b>5+</b> engines in parallel</span>
+    <span><b>3</b> face models</span>
+    <span><b>~40s</b> per face</span>
+    <span>Hardhat + Ethereum Sepolia</span>
+    <span>FastAPI live UI</span>
+  </div>
+</div></section>
+
+<div class="foot">FaceTrace · HH Goa 2026 Task 3 — face identification → social match → blockchain proof</div>
 
 </body>
 </html>
