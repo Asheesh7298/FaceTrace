@@ -109,6 +109,8 @@ never crashes the run. If no identity verifies, the pipeline still anchors a **p
 ### 0. Prerequisites
 - Python 3.11 · Node.js 18+
 - A **SerpApi** key (free tier, 100 searches/month) → `.env`
+- ~2 GB free disk — DeepFace and InsightFace download their model weights on
+  first run, so the first execution takes several minutes longer than later ones.
 
 ### 1. Install
 ```bash
