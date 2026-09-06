@@ -8,14 +8,66 @@ blockchain — then re‑verifies it on demand.
 > **HH Goa 2026 · Shortlisting Task 3** — an end‑to‑end pipeline:
 > **face scan → web/social match (genuine search) → blockchain anchor + verification.**
 
+---
+
+## Dataflow
+
+```mermaid
+flowchart TD
+    IN([📷 Input: a face photo<br/>JPG · PNG · WebP · AVIF · HEIC]):::io
+    IN --> NORM[Normalize any format → RGB JPEG]:::s1
+
+    subgraph S1 [STAGE 1 · Detect & Encode — face/detect.py]
+        direction TB
+        NORM --> DET[MTCNN detect + align → 224×224 crop]:::s1
+        DET --> FH[SHA-256 → face_hash]:::s1
+        DET --> EMB[ArcFace + FaceNet512 + VGG-Face embeddings<br/>+ pose + EXIF]:::s1
+    end
+
+    EMB --> FORK{{run every engine IN PARALLEL}}:::fork
+
+    subgraph S2 [STAGE 2 · Identify & Search — search/]
+        direction TB
+        FORK --> LENS[Google Lens<br/>ai_overview → spaCy NER → name]:::s2
+        FORK --> REK[AWS Rekognition<br/>celebrity recognizer]:::s2
+        FORK --> IDX[Curated local index<br/>17,948-face ArcFace gallery]:::s2
+        FORK --> OPT[optional: Vision · Yandex<br/>Bing · TinEye · FaceCheck]:::s2opt
+
+        LENS --> VOTE[Pool a name vote]:::s2
+        REK --> VOTE
+        IDX --> VOTE
+        OPT -.-> VOTE
+
+        VOTE --> VBC{{🛡️ VERIFY-BEFORE-CLAIM<br/>download reference photos →<br/>DeepFace re-match vs input}}:::gate
+        VBC -->|multiple refs agree| PROF[Find real profile — name →<br/>LinkedIn / Instagram / GitHub / …<br/>profiles rank above posts]:::s2
+        VBC -->|no agreement| NC[not confirmed<br/>never a false identity]:::reject
+        PROF --> CH[Download matched image bytes<br/>→ SHA-256 content_hash]:::s2
+    end
+
+    CH --> PAY
+
+    subgraph S3 [STAGE 3 · Anchor & Verify — blockchain/]
+        direction TB
+        PAY[Build self-describing JSON payload<br/>who · how verified · confidence · source]:::s3
+        PAY --> ANCH[SHA-256 payload → FaceProof.anchor<br/>Hardhat / Ethereum Sepolia]:::s3
+        ANCH --> RV[getProof → on-chain hash == local hash]:::s3
+        RV --> TAMP[Tamper test: alter one field →<br/>hash absent from ledger]:::s3
+    end
+
+    TAMP --> OUT([✅ Verified, tamper-evident record]):::io
+    NC -.->|anchor proof-of-scan| PAY
+
+    classDef io fill:#141f2b,stroke:#5d6b7b,color:#eef2f7;
+    classDef s1 fill:#0f1720,stroke:#60a5fa,color:#dbe6f5;
+    classDef s2 fill:#0f1720,stroke:#22d3ee,color:#d6f5fb;
+    classDef s2opt fill:#0f1720,stroke:#3a4a5a,color:#9dabbd;
+    classDef s3 fill:#0f1720,stroke:#a78bfa,color:#e7dffb;
+    classDef gate fill:#10261c,stroke:#34d399,color:#d5f7e8;
+    classDef reject fill:#2a1418,stroke:#fb7185,color:#ffd9de;
+    classDef fork fill:#1a1205,stroke:#fbbf24,color:#ffedbf;
 ```
-face.jpg ─▶ detect + encode        (MTCNN + ArcFace / FaceNet512 / VGG‑Face)
-         ─▶ identify (in parallel)  Google Lens · AWS Rekognition · 18k local index
-         ─▶ VERIFY BEFORE CLAIM     re‑match vs independent reference photos ✓
-         ─▶ find real profile       name → LinkedIn / Instagram / GitHub / …
-         ─▶ anchor SHA‑256 payload  FaceProof smart contract (Hardhat / Sepolia)
-         ─▶ re‑verify + tamper test  on‑chain hash still matches ✓ / altered = absent
-```
+
+<sub>Every external call **degrades gracefully** — a missing key or failed engine lowers confidence but never crashes the run. If no identity verifies, the pipeline still anchors a **proof‑of‑scan** record (`match_found: false`), so it always completes end‑to‑end.</sub>
 
 ---
 
@@ -50,54 +102,23 @@ combination of Lens + Rekognition + a local face index.
 The task forbids *pre‑picking* the answer for expected inputs. FaceTrace never maps an input to a
 canned output. Every identity is **computed at runtime** by real recognition engines, and — crucially —
 **verify‑before‑claim** confirms the identity by downloading independent reference photos and
-face‑matching them against the input before anything is claimed. The local face index (below) is a
+face‑matching them against the input before anything is claimed. The local face index is a
 **general face‑recognition gallery** built from public Wikidata data, used exactly the way commercial
 face‑search engines work — not a lookup table of test answers. The primary engines (Lens + Rekognition +
 live web search) are unambiguously genuine searches on their own.
 
 ---
 
-## Architecture
+## The three stages
 
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│  STAGE 1 — Face Detection & Encoding            face/detect.py        │
-│  • normalize any input (AVIF/HEIC/WebP/…) → RGB JPEG                  │
-│  • MTCNN detect + align → 224×224 crop → SHA‑256 face_hash           │
-│  • ArcFace + FaceNet512 + VGG‑Face embeddings · pose · EXIF          │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ face crop + face_hash
-┌──────────────────────────────▼──────────────────────────────────────┐
-│  STAGE 2 — Multi‑engine Identity & Search       search/               │
-│  Run IN PARALLEL, pool a name vote:                                   │
-│    • Google Lens  (SerpApi ai_overview → spaCy PERSON NER)            │
-│    • AWS Rekognition  (celebrity recognizer)                          │
-│    • Curated local index  (17,948‑face ArcFace gallery, queried local)│
-│    • (optional) Google Vision · Yandex · Bing · TinEye · FaceCheck.ID │
-│  ── VERIFY BEFORE CLAIM ──                                            │
-│    download several reference photos of the candidate → DeepFace      │
-│    re‑match vs the input crop → claim ONLY if it verifies             │
-│  ── FIND THE PROFILE ──                                               │
-│    name → web search across social/dev/news sites → rank              │
-│    (real PROFILE pages outrank posts that merely mention the person)  │
-│  ── FINGERPRINT ──                                                    │
-│    download the matched image bytes → content_hash (not the URL)      │
-└──────────────────────────────┬──────────────────────────────────────┘
-                               │ verified identity + best_match + content_hash
-┌──────────────────────────────▼──────────────────────────────────────┐
-│  STAGE 3 — Blockchain Anchoring & Verification  blockchain/           │
-│  • build a self‑describing JSON payload (who / how verified / how sure)│
-│  • SHA‑256(payload) → FaceProof.anchor() on Ethereum                  │
-│  • read back with getProof() → confirm on‑chain hash == local hash    │
-│  • re‑verify + tamper test on demand                                  │
-└─────────────────────────────────────────────────────────────────────┘
-```
+### Stage 1 — Face Detection & Encoding · `face/detect.py`
+- Normalizes any input (AVIF/HEIC/WebP/…) → RGB JPEG.
+- MTCNN detects + aligns the face → 224×224 crop → **SHA‑256 `face_hash`**.
+- Computes **ArcFace + FaceNet512 + VGG‑Face** embeddings, plus pose and EXIF metadata.
 
-Every external call **degrades gracefully** — a missing key or a failed engine lowers confidence but
-never crashes the run. If no identity verifies, the pipeline still anchors a **proof‑of‑scan** record
-(`match_found: false`), so it always completes end‑to‑end.
+### Stage 2 — Multi‑engine Identity & Search · `search/`
+Runs every engine **in parallel** and pools a name vote:
 
-### The engines
 | Engine | Role | Requires |
 |---|---|---|
 | **Google Lens** (SerpApi) | Primary identifier — `ai_overview` names the person (retry + `knowledge_graph`/visual‑title fallbacks) | `SERPAPI_KEY` |
@@ -105,6 +126,15 @@ never crashes the run. If no identity verifies, the pipeline still anchors a **p
 | **Curated local index** | 17,948 public figures (ArcFace embeddings) queried locally in <100 ms; also a name→Instagram gazetteer | built once (see below) |
 | **Name‑based web search** | Finds the real profile once a name is confirmed | `SERPAPI_KEY` |
 | Google Vision · Yandex · Bing · TinEye · FaceCheck.ID | Optional extra signals (gated by key/flag; skip cleanly when unset) | optional |
+
+Then **verify‑before‑claim** (below), **find the profile** (real PROFILE pages outrank posts that
+merely mention the person), and **fingerprint** the matched image bytes → `content_hash` (not the URL).
+
+### Stage 3 — Blockchain Anchoring & Verification · `blockchain/`
+- Builds a self‑describing JSON payload (who / how verified / how confident / source).
+- `SHA‑256(payload)` → `FaceProof.anchor()` on Ethereum.
+- Reads back with `getProof()` → confirms on‑chain hash == local hash.
+- **Re‑verify + tamper test** on demand.
 
 ### Verify‑before‑claim (the key differentiator)
 Reverse‑image results are full of **look‑alikes**, and a large face gallery always has a near‑twin, so a
